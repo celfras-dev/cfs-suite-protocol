@@ -495,9 +495,10 @@ SWD and core-control operations, `0x20`, `0x21` and `0xE1` for flash
 operations, and `0x30`-`0x35` for its own firmware update. The first block is
 worth naming precisely: `0x14` and `0x15` are core halt and core resume, which
 sit beside the SWD errors without being SWD errors, and reading them as
-transport faults has cost bench time. Those meanings are the bridge's; they are
-documented with the bridge in Part II, and they say nothing about what a
-different layer might assign to the same numbers. A device and a bridge on one
+transport faults has cost bench time. Those meanings are the bridge's — the
+blocks named here are the whole of that layer's allocation, and the bridge
+appendix of Part II carries the commands that raise them — and they say nothing
+about what a different layer might assign to the same numbers. A device and a bridge on one
 link can both use `0x30` for unrelated things without conflict, because the
 frame says which of them answered.
 
@@ -863,12 +864,17 @@ Required behaviour:
 - A `SET` to a read-only slot MUST be answered `ERR_BAD_ARGS`. It MUST NOT store
   the value, and MUST NOT answer OK — a host cannot tell a silently ignored
   write from a successful one.
-- Every writable slot MUST have an accepted range, declared in Part II. A slot
-  that accepts every value its width can hold is declared as accepting the full
-  width. Without a declared range there is nothing for the next rule to test.
-- A `SET` with a value outside the slot's declared range MUST be answered
-  `ERR_BAD_ARGS`. A device MUST NOT mask or clamp the value into range: a host
-  asking for something impossible has a bug, and a clamp hands it
+- A conforming **device** MUST document the range it accepts for each writable
+  slot. The range is the device's own statement about itself: a slot that
+  accepts every value its width can hold documents that, and a slot that
+  accepts less documents what it accepts. Limits a host tool keeps in its own
+  copy of the identifier map are that tool's input affordance, adjustable by
+  whoever runs it, and are not the device's range — a host MUST NOT treat them
+  as one.
+- A `SET` with a value the slot does not accept MUST be answered
+  `ERR_BAD_ARGS`. A device MUST NOT mask or clamp the value into range, and
+  MUST NOT answer OK to a value it then discards: a host asking for something
+  impossible has a bug, and every one of those three outcomes hands it
   plausible-looking readings instead of the error that would surface it.
 - A `GET` of a slot, issued after a successful `SET` of that same slot, MUST
   return the value that was set, unless the device itself has changed it in the
@@ -877,6 +883,22 @@ Required behaviour:
   that cannot be read back is indistinguishable from a write that was
   discarded. A slot that cannot meet this MUST reject `SET` with
   `ERR_BAD_ARGS` and MUST be declared read-only.
+
+Those last two are one rule seen from the wire, and it is the whole of what a
+host can observe: **after a `SET` answered OK, a `GET` of that slot returns
+what was set; and a device that will not take a value says so instead of
+answering OK.** There is no conforming third outcome — no OK that means the
+device kept something else, and none that means it kept nothing.
+
+The failure this forbids is easy to build by accident, and it is worth naming
+because it is not a protocol mistake at all. Where a slot's setter refuses a
+value inside the device but has no way to report the refusal back to the
+command handler — a setter that returns `void` is the usual shape — the write
+is dropped and the handler, having nothing to report, answers OK. Nothing on
+the wire contradicts that until a `GET` disagrees with the last value written,
+and a host that never re-reads the slot will not find out at all. The refusal
+has to reach the layer that composes the response, and that layer has to send
+`ERR_BAD_ARGS`.
 
 ### 8.1 The identifier maps are product-defined, and this is load-bearing
 
@@ -896,6 +918,30 @@ any layer. Therefore:
 - A product MUST assign new slots by appending. Renumbering an existing slot
   changes what an unchanged host writes, and is a MAJOR command-set change
   (§9.3).
+
+### 8.2 Where two opcodes reach one field, they MUST agree
+
+This standard defines more than one route to a device's configurable state:
+the parameter family above, and, on a product that implements the tuning group,
+that group's own parameter commands (§6.4). A product MAY expose the same
+underlying field through more than one of them.
+
+Where it does, those opcodes MUST agree about that field. They MUST agree on
+whether it is writable at all, and they MUST accept the same values for it.
+
+Without that rule a product can answer two different things about one field in
+one build: a write accepted and answered OK through one opcode, and the
+identical write refused with `ERR_BAD_ARGS` through another. A host has no way
+to resolve the contradiction. Neither answer is wrong on its own terms — each
+handler is applying a rule the other does not know about — and nothing in the
+frame says which one describes the device, so the host is left to decide
+whether the field took the value by re-reading it through a third route.
+
+Writability is a property of the field, not of the opcode a host happened to
+reach it through, and a host is entitled to establish it once and rely on it
+everywhere. A product that means a field to be reachable by only one opcode
+expresses that by not mapping it into the other, rather than by mapping it and
+refusing it there.
 
 ## 9. Opcode space, reservations and evolution
 
@@ -1064,21 +1110,22 @@ under Transport and framing, Requests and responses, Modes, or items 22, 23,
 |---|---|---|
 | 35 | An out-of-range identifier is refused with `ERR_BAD_ARGS`. | 8 |
 | 36 | A write to a read-only slot is refused with `ERR_BAD_ARGS` and stores nothing. | 8 |
-| 37 | Every writable slot has a declared accepted range, and a value outside it is refused with `ERR_BAD_ARGS`, never clamped or masked. | 8 |
+| 37 | The device documents the range it accepts for each writable slot, and a value it does not accept is refused with `ERR_BAD_ARGS` — never clamped, never masked, and never answered OK and discarded. | 8 |
 | 38 | A `GET` after a successful `SET` of the same slot returns the value that was set. | 8 |
 | 39 | Slot numbering is append-only, and any renumbering is accompanied by a MAJOR command-set version change. | 8.1, 9.3 |
+| 40 | Where one field is reachable through more than one opcode, those opcodes agree on whether it is writable and on the values they accept for it. | 8.2 |
 
 A conforming **host** additionally answers yes to these.
 
 | Item | Requirement | See |
 |---|---|---|
-| 40 | It matches responses by `SEQ`, and does not assume request ordering. | 3.5 |
-| 41 | It tolerates an unsolicited frame arriving at any time, including between its own request and the matching response. | 2, 7 |
-| 42 | It tolerates an unrecognised status byte without losing frame synchronisation. | 4.2 |
-| 43 | It reads an unsolicited frame's first payload byte as the status byte, and takes the frame's content from `DATA[0]`. | 7 |
-| 44 | For a frame that arrived corrupt it tolerates both answers: silence from a device, and `[ERR][ERR_BAD_CRC]` from a bridge or a bootloader. | 3.7 |
-| 45 | It does not send a frame larger than the device's documented maximum, and does not establish that maximum by experiment. | 3.8 |
-| 46 | It reads the device's identity and command-set version before using any identifier map, and uses that product's own map. | 8.1 |
+| 41 | It matches responses by `SEQ`, and does not assume request ordering. | 3.5 |
+| 42 | It tolerates an unsolicited frame arriving at any time, including between its own request and the matching response. | 2, 7 |
+| 43 | It tolerates an unrecognised status byte without losing frame synchronisation. | 4.2 |
+| 44 | It reads an unsolicited frame's first payload byte as the status byte, and takes the frame's content from `DATA[0]`. | 7 |
+| 45 | For a frame that arrived corrupt it tolerates both answers: silence from a device, and `[ERR][ERR_BAD_CRC]` from a bridge or a bootloader. | 3.7 |
+| 46 | It does not send a frame larger than the device's documented maximum, and does not establish that maximum by experiment. | 3.8 |
+| 47 | It reads the device's identity and command-set version before using any identifier map, and uses that product's own map. | 8.1 |
 
 # Celfras Standard Protocol — Part II: The Products
 

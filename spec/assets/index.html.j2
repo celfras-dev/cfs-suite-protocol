@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Celfras Standard Protocol V{{ ver }}</title>
+<style>
+:root { --font-body: "Segoe UI", Arial, Helvetica, sans-serif; }
+{{ css }}
+.langs, .downloads { list-style: none; padding: 0; }
+.langs li, .downloads li { margin: .4rem 0; }
+.downloads li.pending { color: #555; }
+.badge { display: inline-block; margin-left: .5rem; padding: .1rem .5rem;
+         border-radius: 3px; background: #eef1f5; color: #555;
+         font-size: .78em; letter-spacing: .03em; }
+.hint { margin: .3rem 0 0; font-size: .85em; color: #777; }
+</style>
+</head>
+<body class="web">
+<main>
+  <h1>Celfras Standard Protocol</h1>
+  <p class="ver">Version {{ ver }} &mdash; command set {{ ver }}</p>
+
+  <h2>Read</h2>
+  <ul class="langs">
+    <li><a href="en.html">English</a></li>
+    <li><a href="ko.html">한국어</a></li>
+    <li><a href="zh.html">中文</a></li>
+  </ul>
+
+  <h2>Download</h2>
+  <ul class="downloads">
+    {% for lang, name in pdf_names %}
+    <li><a href="downloads/{{ name|urlencode }}">{{ name }}</a></li>
+    {% endfor %}
+    <li class="pending">
+      Reference implementation &mdash; DUT firmware command-set handler
+      <span class="badge">coming soon</span>
+      <p class="hint">A portable core (COBS, CRC16, frame dispatch) plus one
+      buildable example project. Being optimised and bench-verified first.</p>
+    </li>
+  </ul>
+</main>
+</body>
+</html>

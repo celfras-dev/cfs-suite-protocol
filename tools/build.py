@@ -11,6 +11,8 @@ import json
 import shutil
 from pathlib import Path
 
+from jinja2 import Template
+
 from tools import pdf, render
 from tools.extract import __main__ as extract_all
 
@@ -132,9 +134,31 @@ def build(internal: bool = False, out_root: Path | None = None,
         dl.mkdir(exist_ok=True)
         for p in pdfs.values():
             shutil.copy2(p, dl / p.name)
+        _write_index(site_dir, ver, pdfs)
 
     return {"version": ver, "edition": edition, "pdfs": pdfs, "site": site,
             "print_html": print_html}
+
+
+def _write_index(site_dir: Path, ver: str, pdfs: dict[str, Path]) -> Path:
+    """Render the site's front door: language switcher, PDF downloads, and
+    a placeholder slot for the reference example code (not a link yet --
+    see examples/README.md).
+
+    Stays entirely inside site_dir, same as the language pages above, so a
+    build into a tmp_path out_root never touches the repository.
+    """
+    tpl = Template((SPEC / "assets" / "index.html.j2").read_text(encoding="utf-8"))
+    out = site_dir / "index.html"
+    out.write_text(
+        tpl.render(
+            ver=ver,
+            pdf_names=[(lang, p.name) for lang, p in sorted(pdfs.items())],
+            css=(SPEC / "assets" / "style.css").read_text(encoding="utf-8"),
+        ),
+        encoding="utf-8",
+    )
+    return out
 
 
 def main() -> None:

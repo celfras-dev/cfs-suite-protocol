@@ -867,10 +867,13 @@ Required behaviour:
 - A conforming **device** MUST document the range it accepts for each writable
   slot. The range is the device's own statement about itself: a slot that
   accepts every value its width can hold documents that, and a slot that
-  accepts less documents what it accepts. Limits a host tool keeps in its own
-  copy of the identifier map are that tool's input affordance, adjustable by
-  whoever runs it, and are not the device's range — a host MUST NOT treat them
-  as one.
+  accepts less documents what it accepts. This standard does not prescribe
+  where that documentation lives or what form it takes — a datasheet, a
+  product manual, or an appendix of the shape Part II uses — only that the
+  device's own statement of its ranges exists and is the one a host uses.
+  Limits a host tool keeps in its own copy of the identifier map are that
+  tool's input affordance, adjustable by whoever runs it, and are not the
+  device's range — a host MUST NOT treat them as one.
 - A `SET` with a value the slot does not accept MUST be answered
   `ERR_BAD_ARGS`. A device MUST NOT mask or clamp the value into range, and
   MUST NOT answer OK to a value it then discards: a host asking for something
@@ -1149,6 +1152,18 @@ documentation. Where that edition adds a column giving each slot's built-in
 value, this one simply does not have it, and no threshold value appears
 anywhere in this text.
 
+That rule is about the contents of the identifier maps. It is not a rule
+against every number: where Part I requires a device to publish a constant of
+its own so that a host can talk to it at all — the maximum encoded frame of
+§3.8, the link-liveness interval of §5.3 — the value is stated here, because a
+host cannot use the link without it. Read a bare number in this part as one of
+those link constants, never as a threshold out of a map.
+
+Where this part discusses one slot it names the slot and leaves the number to
+the table above it. The tables are generated from the products themselves; an
+id retyped into a sentence is a second copy of the same fact, and this part
+has already outlived one renumbering (A.2).
+
 ## A. CFS-ECIG-SUITE
 
 The reference implementation of Part I, and the product every generated
@@ -1176,8 +1191,8 @@ answer `[OK]` whether or not anything happens. An `[OK]` from those four opcodes
 is not evidence that the device acted.
 
 **`CMD_SET_MODE` also drives the log parameter here.** Entering
-`OPMODE_NORMAL` or `OPMODE_DEBUG` forces the `LOG_ENABLE` parameter slot
-(par8 id 0) off and on respectively, so the first log line after entering
+`OPMODE_NORMAL` or `OPMODE_DEBUG` forces the `LOG_ENABLE` parameter slot of
+A.3 off and on respectively, so the first log line after entering
 `OPMODE_DEBUG` arrives without a `CMD_LOG_START`. This was a deliberate choice
 made 2026-07-10, and it is the one behaviour Appendix B contrasts with.
 
@@ -1205,13 +1220,12 @@ in place of something the firmware would otherwise read off its own hardware —
 never a second copy of the device's control state. The production control code
 then runs unmodified rather than growing host-only branches.
 
-- `EXT_CTRL_STATUS` and `EXT_HEATING_PWM_DUTY` (var8 ids 0 and 1) and
-  `EXT_HEATING_POWER` (var16 id 0) are an external-control interface; what its
-  bits mean, what each slot accepts, and what a host must do while driving it
-  are in the product's own documentation, not here.
-- `EVENT_EMUL_MASK` and `EVENT_EMUL_ENABLE` (var8 ids 10 and 11) let a host
-  stand in for the device's own event inputs. Both accept the full width of
-  their slot.
+- `EXT_CTRL_STATUS`, `EXT_HEATING_PWM_DUTY` and `EXT_HEATING_POWER` are an
+  external-control interface; what its bits mean, what each slot accepts, and
+  what a host must do while driving it are in the product's own documentation,
+  not here.
+- `EVENT_EMUL_MASK` and `EVENT_EMUL_ENABLE` let a host stand in for the
+  device's own event inputs. Both accept the full width of their slot.
 
 Three further facts a host needs before it trusts a reading:
 
@@ -1224,9 +1238,11 @@ Three further facts a host needs before it trusts a reading:
   there means *not wired in this build*, exactly as it does for an unwired
   telemetry bit (§7.2); it is not a reading of zero.
 - **The variable numbering happens to be the same on the boards built so far,
-  and that is a coincidence rather than a guarantee.** It carries none of the
-  cross-product weight §8.1 denies the parameter map, and none of the safety
-  either: a host still establishes which product it is talking to first.
+  and that is a coincidence rather than a guarantee.** §8.1 applies to this
+  map exactly as it applies to the parameter map: the agreement is an accident
+  of history, it promises nothing about the next board, and it makes nothing
+  safe. A host still establishes which product it is talking to before it uses
+  either map.
 
 This map was renumbered once, on 2026-07-29, when the external-control block was
 inserted at the front of the 8-bit and 16-bit spaces instead of being appended.
@@ -1271,16 +1287,20 @@ slots are unaffected because they do not touch the parameter block at all:
 writable in every build.
 
 **Two slots are reserved for a second heating coil this board does not have.**
-`SHORT_COIL2_TH` and `OPEN_COIL2_TH` (par16 ids 10 and 13) are declared so that
-the numbering already matches a two-coil build. They read zero and reject every
-write, in every build — that is not the tuning-build effect above, and selecting
-a tuning build does not open them.
+`SHORT_COIL2_TH` and `OPEN_COIL2_TH` are declared so that the numbering already
+matches a two-coil build. They read zero and reject every write, in every build
+— that is not the tuning-build effect above, and selecting a tuning build does
+not open them.
 
-Three smaller facts about individual slots:
+Four smaller facts about individual slots:
 
 - `SHORT_COIL1_TH` and `OPEN_COIL1_TH` are a pair, and the firmware compares
-  them against each other rather than each against a fixed bound. Their ordering
-  is therefore a constraint on what a host may write: crossing them over
+  them against each other rather than each against a fixed bound: both are
+  tested against the same measured drop, the open-coil fault below one
+  threshold and the short-coil fault above the other. Their ordering is
+  therefore a constraint on what a host may write — the short-coil threshold
+  MUST stay above the open-coil one. Crossed over, the healthy band between
+  them becomes a band in which both faults trip at once, so crossing them
   disables coil detection instead of tightening it.
 - `CHG_OVP_TH` and `SHORT_COIL_RST_TH` are readable and writable, but nothing
   currently compares against them — one is a divider reading whose compare is
@@ -1292,11 +1312,21 @@ Three smaller facts about individual slots:
   is a departure from §8's read-back rule, recorded here rather than smoothed
   over. Its accepted range is one and above, and a new implementation MUST
   answer `ERR_BAD_ARGS` for the zero rather than copy this.
+- `LOG_ENABLE` **stores something other than what it was given**: its setter
+  reduces any non-zero value to one, and the command answers `[OK]` regardless.
+  A `SET` of any non-zero value is therefore answered OK, and a `GET`
+  afterwards returns one. That is the masking §8 forbids, and it is the same
+  defect as the slot above seen from the other side — a setter with no way to
+  report a refusal to the layer that composes the response, so the response
+  says OK. Its accepted range is zero and one, and a new implementation MUST
+  answer `ERR_BAD_ARGS` for anything else rather than copy this. The two are
+  one defect with two instances, and are recorded on this product's own defect
+  list as one entry rather than as two unrelated quirks.
 
-Every other writable parameter slot accepts the full width of its slot: the
-firmware range-checks the identifier, not the value. Where a value has to be
-sane for the device to behave, that constraint is the product's, and it is in
-the product's own documentation.
+Apart from those two, a writable parameter slot accepts the full width of its
+slot: the firmware range-checks the identifier, not the value. Where a value
+has to be sane for the device to behave, that constraint is the product's, and
+it is in the product's own documentation.
 
 ### A.4 Telemetry fields
 
@@ -1327,8 +1357,18 @@ build does not support with `ERR_BAD_ARGS`:
 
 - `TUNING_ID_CV_VATRMS` (0) — sweeps the constant-voltage drive target.
   Constant-voltage builds only.
-- `TUNING_ID_BATTERY_GAUGE` (1) — sweeps the battery gauge's voltage divisions,
-  over a discharge phase and a charge phase.
+- `TUNING_ID_BATTERY_GAUGE` (1) — sweeps the battery gauge's voltage divisions.
+  It is defined over a discharge phase and a charge phase, and **the shipping
+  firmware runs only the charge phase.** Which phase a session takes is decided
+  by the device, from whether a charger is actually present; with none present
+  the session would be a discharge sweep, and `CMD_TUNING_START` refuses the
+  identifier outright with `ERR_NOT_READY`. The refusal is deliberate: the
+  discharge sweep's frames would report the voltage under load rather than the
+  cell's own, so the sweep would return numbers that look like a calibration
+  and are not, and refusing is the honest answer. The cause is a regression in
+  this product's measurement path and is recorded on its own defect list. This
+  refusal is not the staging refusal below — it does not depend on anything the
+  host staged — and it shares only its error code.
 - `TUNING_ID_PROTECT_THRESH` (2) — sweeps the short-coil and open-coil
   resistance thresholds.
 - `TUNING_ID_DRYPUFF` (3) — sweeps the dry-puff temperature and slope
@@ -1341,6 +1381,41 @@ documentation. `CMD_TUNING_START` refuses a session whose staged stimulus could
 produce no measurement, with `ERR_NOT_READY`, rather than running to completion
 and reporting nothing.
 
+One identifier also constrains the requested report period. A battery-gauge
+session reports once per cycle of its own fixed sample cadence, so the period
+has nothing left to control: `CMD_TUNING_START` refuses any other value with
+`ERR_BAD_ARGS` instead of accepting it and reporting at a different rate, since
+a host that asked for one period and silently got another would misread every
+gap between timestamps. The cadence itself is a constant of this product and is
+stated with the product's own documentation. No other identifier constrains the
+period beyond what §6.4 requires.
+
+**What the index tuple means.** §6.4 leaves the meaning of
+`CMD_SET_TUNING_PAR`/`CMD_GET_TUNING_PAR`'s indices to the product. Here the
+`tuning_id` selects the calibration table and the remaining indices address a
+cell in it; an identifier uses only the indices its own table has dimensions
+for, and every index it uses is bounds-checked against the real dimension, a
+violation answering `ERR_BAD_ARGS` as §6.4 requires. No session is needed for
+either command.
+
+- `TUNING_ID_CV_VATRMS` is the only one that uses the whole tuple: `coil_idx`
+  the heating coil, `heating_mode` the drive mode, `heater_type` the fitted
+  heater, `step` the target-voltage step.
+- `TUNING_ID_BATTERY_GAUGE` uses `coil_idx` as the **charge direction** —
+  discharging or charging, not a physical coil — and `step` as the gauge
+  division.
+- `TUNING_ID_PROTECT_THRESH` uses `coil_idx` as the heating coil and `step` to
+  select which of the pair is addressed, the short-coil threshold or the
+  open-coil one.
+- `TUNING_ID_DRYPUFF` uses `step` to select the absolute-temperature threshold
+  or the slope threshold; these are not per-coil, but `coil_idx` is still
+  checked against the coil count, so a host naming a coil that does not exist is
+  told rather than served.
+
+An index an identifier does not use is ignored rather than required to be zero,
+and is not range-checked. A host SHOULD send zero for it, because a product that
+later gives that dimension a meaning will start checking it.
+
 **Which protections a session suspends** — the disclosure §6.4 requires:
 long-puff and heating-timeout protection are suspended whenever the host is
 driving the heating trigger, which covers plain external control as well as a
@@ -1352,13 +1427,24 @@ refuse. Under-voltage lockout and charge over-voltage protection stay live
 throughout. A host that relied on the long-puff or heating-timeout protection to
 end an over-long externally driven heating request does not have that backstop.
 
+One of those suspensions does not reach as far as it reads. Suspending the
+coil-resistance check suspends the check the device runs *while* heating, and
+not the one it runs at heating *start*: that one raises an open-coil fault
+directly from a pin reading, with nothing in its path that the suspension
+touches. So a protect-threshold session on a load the check would refuse can
+still be stopped at heating start — the exact case the suspension exists to
+permit. It is recorded on this product's own defect list, and a product that
+discloses a suspension SHOULD make it reach every check the disclosure covers.
+
 One inconsistency on this product's protocol surface is worth stating, because
 it is host-visible: on a constant-voltage tuning build the two dry-puff
 threshold slots are writable through `CMD_PAR16_SET`, which answers `OK`, and
 refused by `CMD_SET_TUNING_PAR`, which answers `ERR_BAD_ARGS` on the correct
 reasoning that nothing reads them in that build. Two opcodes, one field,
-opposite answers. It is a protocol-surface inconsistency only — the field exists
-either way — and it is recorded, not yet resolved.
+opposite answers. That is a departure from §8.2, which requires two opcodes
+reaching one field to agree about whether it is writable. It is a
+protocol-surface inconsistency only — the field exists either way — and it is
+recorded, not yet resolved.
 
 ## B. CVS-BP2601
 
@@ -1383,7 +1469,7 @@ device's side: `0xC0` and above belongs to this layer, a product must not define
 a command there, and a bridge routes on the opcode byte alone. This appendix is
 the table that rule reserves the band for.
 
-{{table:bridge}}
+{{table:bridge:no_notes}}
 
 Read it as one layer's table, not one board's. Two bridge boards are in service;
 they differ in performance, not in what they answer, and both declare this
@@ -1392,14 +1478,26 @@ per-board convention.
 
 Four things a host should know before using it:
 
-- **Some entries are reserved without a handler** — the notes column says which.
-  A reserved opcode is answered `ERR_BAD_ARGS` like any other unimplemented one
-  (§9.1), so a host can probe for one rather than reading a version first.
+- **Some entries are reserved without a handler**, and the table does not mark
+  which. Whether an opcode has one is a property of the image that answers, not
+  of the band's table: it changes with the firmware version, and a bootloader
+  answers far fewer opcodes than an application. A reserved opcode is answered
+  `ERR_BAD_ARGS` like any other unimplemented one (§9.1), so a host probes for
+  one rather than reading a version first.
 - **`CMD_UPD_*` (`0xE8`-`0xED`) update the bridge itself, and only its
   bootloader answers them.** They are not the `CMD_FLASH_*` block, which
   programs the *device* behind the bridge. Confusing the two is a mistake with
   no protocol-level defence: both blocks are in this same band and both answer
-  plausibly.
+  plausibly. Their shapes are: `CMD_UPD_BEGIN` takes a fixed 512-byte image
+  header and answers `[OK][chunk_max u16][capacity u32]`; `CMD_UPD_DATA` takes
+  `[off u32][data]`, at most 256 data bytes and never more than the `chunk_max`
+  just returned, and answers `[OK][next_off u32]`; `CMD_UPD_STATUS` takes no
+  payload and answers `[OK]` followed by a fixed 18-byte status block, whose
+  field layout is the bridge's own and is documented with it; and
+  `CMD_UPD_END`, `CMD_UPD_ABORT` and `CMD_UPD_APPLY` take no payload and answer
+  `[OK]`, the board copying the image and resetting itself after it has answered
+  `CMD_UPD_APPLY`. Those sizes are wire constants of this block, the same on
+  every bridge board.
 - **`CMD_BRIDGE_CONF` is one opcode for many settings**, keyed by a parameter
   byte, because the band has few free numbers and a toggle should not consume
   one. An unknown parameter is answered `ERR_BAD_ARGS`, which is how a host
@@ -1415,6 +1513,16 @@ the application from the bootloader — the first thing a host should ask, since
 firmware version alone does not say which image produced it — and the board's
 **hardware identity**, which is the one selector whose answer must be the same
 from either image, because the hardware does not change when the image does.
+
+The role selector is also where a host learns what to expect from the
+command-set selector. A bridge bootloader answers that selector with its own
+number, deliberately frozen below the application's: it names the last revision
+that changed the handful of opcodes the bootloader itself implements, and it
+does not move when the application's number does. A host that has just read the
+role and found a bootloader should expect the next command-set version it reads
+to be lower, and MUST NOT treat the difference as a fault or as a mis-built
+release. §9.3's release-bookkeeping rule is about the copies of one image's
+constant, and the bootloader is a different image.
 
 The bridge's error codes live in the extension space of §4.4, which names their
 blocks. One shape is worth adding here: every `ERR_UPD_*` code carries a `u32`
@@ -1437,13 +1545,25 @@ one that implements them all.
 
 ## E. Command-set change history
 
-One version number covers both bands (§9.3). It is duplicated across eight
-places — the CFS-ECIG-SUITE firmware and its host tool, each of the two bridge
-firmwares and the bridge host tool, and each of the three test firmwares of
-Appendix D — and none of them is authoritative over the others; a release in
-which they disagree is mis-built, which is the release-bookkeeping rule §9.3
-states. A frozen reference tree carries the same constant and is deliberately
-excluded from that count: it is a comparison snapshot, not a product.
+One version number covers both bands (§9.3). It is duplicated across every
+place in this list:
+
+- the CFS-ECIG-SUITE firmware, and its host tool;
+- each of the two bridge firmwares, each of those two boards' build-metadata
+  files, and the bridge host tool;
+- each of the three test firmwares of Appendix D.
+
+None of them is authoritative over the others; a release in which they disagree
+is mis-built, which is the release-bookkeeping rule §9.3 states. The list is the
+fact, and no total is written beside it: §9.3 says these copies have to be
+counted rather than assumed, and a total written next to a list is a second
+thing to keep true — it is the one that rots, and it would rot again the next
+time a board is added. Count the list.
+
+Two things carry the same constant and are deliberately not in it. A frozen
+reference tree carries it because it is a comparison snapshot, not a product.
+The bridge bootloaders carry a number of their own, frozen and lower, for the
+reason Appendix C gives.
 
 Every entry below is derived from the history of those copies rather than from a
 changelog kept for the purpose, and each names what changed on the wire.
@@ -1485,15 +1605,25 @@ changelog kept for the purpose, and each names what changed on the wire.
 **Where the record runs out.** It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered
 2.0.0, and no implementation ever declared a 1.x. The `v1.x` numbers that appear
-in the reference firmware's own protocol document are that document's revision
-numbers — they moved when the document was rewritten — and they are not
-command-set versions; reading them as earlier entries in this list would be a
-mistake.
+in the reference firmware's own protocol document are that document's own
+revision numbers, and they are not command-set versions; reading them as earlier
+entries in this list would be a mistake. They are not empty, though. That
+document bumps its number when a wire-visible change lands — a command added,
+removed or renumbered, a frame layout changed, a default behaviour changed — and
+not for internal implementation changes, and its `v1.0` through `v1.5` entries
+record real ones: a log opcode moved, the burst payload was reordered, an
+operating mode was retired, the default mode's answer to an unknown command
+changed from an error to silence, and a tuning command's payload grew a leading
+field. They describe wire changes on one product that predate the command-set
+numbering entirely.
 
 Two properties of the list are worth stating plainly. Every bump since 2.0.0 has
 been MINOR, and every one of them landed in the bridge band: the device band has
-not changed since the numbering began, which is why a device built against 2.0.0
-and a host built against 2.11.0 still agree about every opcode the device has.
+not changed since 2.0.0, which is why a device built against 2.0.0 and a host
+built against 2.11.0 still agree about every opcode the device has. That is a
+statement about the numbered range and about nothing earlier — the device band
+was renumbered repeatedly in the weeks before the numbering began, as the `v1.x`
+entries above record, which is part of why the numbering exists.
 And not every bump is a wire change — 2.9.0 is partly host-side bookkeeping —
-because the rule of §9.3 is that all eight copies move together, not that each
-increment adds an opcode.
+because the rule of §9.3 is that every copy in the list above moves together,
+not that each increment adds an opcode.

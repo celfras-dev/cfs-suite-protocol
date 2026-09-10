@@ -1,19 +1,17 @@
 import re
+from pathlib import Path
 
 import pypdf
 import pytest
 
 from tools import build, render
 
+SPEC = Path(__file__).resolve().parent.parent / "spec"
+
 
 @pytest.fixture(scope="module")
 def public_build(tmp_path_factory):
     return build.build(internal=False, out_root=tmp_path_factory.mktemp("pub"))
-
-
-@pytest.fixture(scope="module")
-def internal_build(tmp_path_factory):
-    return build.build(internal=True, out_root=tmp_path_factory.mktemp("int"))
 
 
 def _pdf_text(p):
@@ -137,3 +135,43 @@ def test_par16_defaults_render_only_in_internal_build():
     # value, not just the column header.
     assert "10000" in int_
     assert "10000" not in pub
+
+
+def test_shipped_prose_actually_places_a_par_or_var_table():
+    """The whole-document leak assertions above
+    (test_no_product_threshold_leaks_into_public_pdfs/_the_site/
+    _site_extra/_print_html) scan *built* output -- what spec/*.md's prose
+    actually renders -- not the extraction layer directly. That scan is
+    only capable of catching a real leak if the built output contains a
+    par/var table in the first place: forbidden_public_values() is derived
+    from par_map.json defaults (tools/build.py), and those numbers can
+    only appear on a rendered page via a `{{table:par:...}}` or
+    `{{table:var:...}}` placeholder.
+
+    If a future prose edit removed every such placeholder from all three
+    editions (as could legitimately happen -- see
+    test_par16_defaults_render_only_in_internal_build's docstring, which
+    already had to stop depending on the prose for exactly this reason),
+    the whole-document assertions above would keep passing -- there would
+    be nothing to check -- while silently testing nothing. This test makes
+    that precondition explicit and self-checking, so losing it fails here
+    instead of nowhere.
+
+    This does not duplicate test_par16_defaults_render_only_in_internal_build:
+    that one proves the *mechanism* (render.py hides Default in public mode)
+    from a placeholder it writes itself, independent of the shipped prose.
+    This one proves the *shipped prose* still exercises that mechanism at
+    all, which is what the whole-document tests actually rely on.
+
+    Verified to discriminate: temporarily stripping every {{table:par...}}
+    and {{table:var...}} placeholder from spec/en.md turns this test red;
+    restoring the file turns it green again (done by hand while writing
+    this test, not run as part of the suite)."""
+    ph = re.compile(r"\{\{table:(?:par|var):[a-z0-9_]+\}\}")
+    for lang in ("en", "ko", "zh"):
+        text = (SPEC / f"{lang}.md").read_text(encoding="utf-8")
+        assert ph.search(text), (
+            f"{lang}.md has no {{{{table:par:...}}}} or {{{{table:var:...}}}} "
+            "placeholder -- the whole-document leak-gate assertions in this "
+            "file would no longer have anything to check"
+        )

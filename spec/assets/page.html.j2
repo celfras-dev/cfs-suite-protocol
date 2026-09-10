@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} V{{ version }}</title>
+<style>
+:root { --font-body: {{ font_stack }}; }
+{{ css }}
+</style>
+</head>
+<body class="{{ 'print' if for_print else 'web' }}">
+{% if for_print %}
+<section class="cover">
+  <h1>{{ title }}</h1>
+  <p class="ver">V{{ version }}</p>
+  {% if edition == 'internal' %}<p class="badge-internal">INTERNAL — NOT FOR DISTRIBUTION</p>{% endif %}
+</section>
+{% endif %}
+<main>{{ body }}</main>
+</body>
+</html>

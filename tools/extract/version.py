@@ -1,9 +1,9 @@
 """Derive the CMD_SET version instead of declaring one.
 
-This repository holds no copy of the number. It reads the three copies that
-the product repos' own tests can each see only half of, and refuses to build
+This repository holds no copy of the number. It reads the eight copies that
+the product repos' own tests can each see only part of, and refuses to build
 when they disagree -- which makes the document build the only place all
-three are compared at once.
+eight are compared at once.
 """
 from __future__ import annotations
 
@@ -14,7 +14,21 @@ from . import sources
 
 Version = tuple[int, int, int]
 
-_ECIG_HEADER = ("CFS-ECIG-SUITE/FW", "App/Inc/app_proto.h")
+# The full set of CMD_SET_VERSION_MAJOR/MINOR/PATCH C headers across both
+# product repos. app_proto.h's own comment block names five of these (itself
+# plus the two bridge fw/brd0*/app_version.h headers plus the two remaining
+# fw_dut/* firmwares) and explicitly notes that the three fw_dut/* copies are
+# ones the ECIG repo's own tests cannot hold; CFS-SUITE-BRIDGE's test holds
+# those three plus its own two, but not the ECIG one. Neither product-repo
+# test sees all eight at once -- this build does.
+_C_HEADERS = [
+    ("CFS-ECIG-SUITE/FW", "App/Inc/app_proto.h"),
+    ("CFS-SUITE-BRIDGE", "fw/brd01/App/Inc/app_version.h"),
+    ("CFS-SUITE-BRIDGE", "fw/brd02/App/Inc/app_version.h"),
+    ("CFS-SUITE-BRIDGE", "fw_dut/cwm2032/App/Inc/app_proto.h"),
+    ("CFS-SUITE-BRIDGE", "fw_dut/cwm1016/App/Inc/app_proto.h"),
+    ("CFS-SUITE-BRIDGE", "fw_dut/cwm0508/App/Inc/app_proto.h"),
+]
 _ECIG_JSON = ("CFS-ECIG-SUITE/pc_app", "conf/cmd_set.json")
 _BRIDGE_PY = ("CFS-SUITE-BRIDGE", "pc_app/cfsbridge/commands.py")
 
@@ -50,11 +64,13 @@ def _from_bridge_py(text: str) -> Version:
 
 
 def _collect() -> dict[str, Version]:
-    return {
-        "/".join(_ECIG_HEADER): _from_c_header(sources.read_committed(*_ECIG_HEADER)),
-        "/".join(_ECIG_JSON): _from_cmd_set_json(sources.read_committed(*_ECIG_JSON)),
-        "/".join(_BRIDGE_PY): _from_bridge_py(sources.read_committed(*_BRIDGE_PY)),
+    found = {
+        "/".join(src): _from_c_header(sources.read_committed(*src))
+        for src in _C_HEADERS
     }
+    found["/".join(_ECIG_JSON)] = _from_cmd_set_json(sources.read_committed(*_ECIG_JSON))
+    found["/".join(_BRIDGE_PY)] = _from_bridge_py(sources.read_committed(*_BRIDGE_PY))
+    return found
 
 
 def extract() -> Version:

@@ -34,7 +34,15 @@ def test_filename_carries_the_cmd_set_version(public_build):
 
 def test_forbidden_public_values_is_not_empty():
     """A gate nobody can fail is a gate that isn't there: an empty set would
-    make every leak assertion below pass vacuously."""
+    make every leak assertion below pass vacuously.
+
+    Deliberately checks forbidden_public_values() itself, not
+    leak_gate_values() -- see below, every actual leak assertion in this
+    file scans against build.leak_gate_values() (forbidden minus
+    build.PROTOCOL_VALUE_EXEMPTIONS, see tools/build.py and
+    tests/test_build_exemptions.py), because the gate matches raw numbers
+    and a real protocol constant can legitimately collide with a product
+    default (BURST_PERIOD_MS_MAX == LED_BREATH_PERIOD_MS == 1000)."""
     assert len(build.forbidden_public_values()) > 0
 
 
@@ -43,7 +51,7 @@ def test_no_product_threshold_leaks_into_public_pdfs(public_build):
     writes into it. A bare number here is a leak."""
     for lang, p in public_build["pdfs"].items():
         text = _pdf_text(p)
-        for value in build.forbidden_public_values():
+        for value in build.leak_gate_values():
             assert not re.search(rf"(?<![\d.]){value}(?![\d.])", text), (
                 f"{value} leaked into the {lang} public PDF"
             )
@@ -52,7 +60,7 @@ def test_no_product_threshold_leaks_into_public_pdfs(public_build):
 def test_no_product_threshold_leaks_into_the_site(public_build):
     for p in public_build["site"].values():
         text = p.read_text(encoding="utf-8")
-        for value in build.forbidden_public_values():
+        for value in build.leak_gate_values():
             assert not re.search(rf"(?<![\d.]){value}(?![\d.])", text), (
                 f"{value} leaked into {p.name}"
             )
@@ -65,7 +73,7 @@ def test_no_product_threshold_leaks_into_site_extra(public_build):
     `site_extra` in the future is covered automatically by this loop."""
     for p in public_build["site_extra"].values():
         text = p.read_text(encoding="utf-8")
-        for value in build.forbidden_public_values():
+        for value in build.leak_gate_values():
             assert not re.search(rf"(?<![\d.]){value}(?![\d.])", text), (
                 f"{value} leaked into {p.name}"
             )
@@ -88,7 +96,7 @@ def test_no_product_threshold_leaks_into_print_html(public_build):
     the PDF-text check: that one catches a different class of mistake,
     such as a bug in pdf.py itself changing what actually gets printed."""
     for lang, html in public_build["print_html"].items():
-        for value in build.forbidden_public_values():
+        for value in build.leak_gate_values():
             assert not re.search(rf"(?<![\d.]){value}(?![\d.])", html), (
                 f"{value} leaked into the {lang} public print HTML"
             )

@@ -126,3 +126,68 @@ def test_normal_req_resp_comments_note_is_unaffected():
 
     set_tuning_par = by_id[0x73]  # trailing '-- no session required'
     assert set_tuning_par["note"] == "no session required"
+
+
+def test_ver_selectors():
+    """Job 1: VER_SEL_FW/VER_SEL_CMD_SET are standard values (shared
+    byte-for-byte across projects per app_proto.h's own comment block) that
+    CMD_GET_VERSION's [sel u8] request needs, but nothing extracted them."""
+    by_val = {s["value"]: s["name"] for s in opcodes.ver_selectors()}
+    assert by_val == {0x00: "VER_SEL_FW", 0x01: "VER_SEL_CMD_SET"}
+    fw = next(s for s in opcodes.ver_selectors() if s["name"] == "VER_SEL_FW")
+    assert "firmware build" in fw["note"]
+
+
+def test_log_fields():
+    """Job 2: LOG_FIELD_* are the fields_mask bits CMD_LOG_BURST_START's
+    request needs to build, and are standard bit assignments even though
+    which ones a given product wires up is product-specific."""
+    by_bit = {f["bit"]: f["name"] for f in opcodes.log_fields()}
+    assert by_bit == {
+        0x01: "LOG_FIELD_VDD", 0x02: "LOG_FIELD_VAT", 0x04: "LOG_FIELD_IAT",
+        0x08: "LOG_FIELD_PWR", 0x10: "LOG_FIELD_DUTY", 0x20: "LOG_FIELD_PROT",
+        0x40: "LOG_FIELD_RAT",
+    }
+
+
+def test_burst_limits():
+    """Job 3: the burst period/duration/field-count bounds are standard
+    constants in the same shared block as the LOG_FIELD_* bits."""
+    by_name = {b["name"]: b["value"] for b in opcodes.burst_limits()}
+    assert by_name["BURST_PERIOD_MS_MIN"] == 10
+    assert by_name["BURST_PERIOD_MS_MAX"] == 1000
+    assert by_name["BURST_DURATION_MS_MIN"] == 100
+    assert by_name["BURST_DURATION_MS_MAX"] == 1000000
+    assert by_name["BURST_MAX_FIELDS"] == 16
+
+
+def test_ver_selectors_and_log_fields_share_the_newline_discipline(monkeypatch):
+    """Same bug class as test_comment_does_not_bridge_across_a_newline_to_a_
+    later_define above, for the two new regexes: a comment-less #define must
+    not absorb a stray comment line from below it."""
+    snippet = (
+        "#define VER_SEL_A 0x00u\n"
+        "// note that belongs to VER_SEL_B\n"
+        "#define VER_SEL_B 0x01u  // b's own note\n"
+        "\n"
+        "#define LOG_FIELD_A 0x01u\n"
+        "// note that belongs to LOG_FIELD_B\n"
+        "#define LOG_FIELD_B 0x02u  // b's own note\n"
+        "\n"
+        "#define BURST_A 10u\n"
+        "// note that belongs to BURST_B\n"
+        "#define BURST_B 20u  // b's own note\n"
+    )
+    monkeypatch.setattr(opcodes, "_text", lambda: snippet)
+
+    by_val = {s["value"]: s for s in opcodes.ver_selectors()}
+    assert by_val[0x00]["note"] == ""
+    assert by_val[0x01]["note"] == "b's own note"
+
+    by_bit = {f["bit"]: f for f in opcodes.log_fields()}
+    assert by_bit[0x01]["note"] == ""
+    assert by_bit[0x02]["note"] == "b's own note"
+
+    by_name = {b["name"]: b for b in opcodes.burst_limits()}
+    assert by_name["BURST_A"]["note"] == ""
+    assert by_name["BURST_B"]["note"] == "b's own note"

@@ -74,3 +74,61 @@ def test_language_font_stack_is_applied(gen):
 def test_version_reaches_the_page(gen):
     html = render.render_page("en", "# T", gen, for_print=True)
     assert "2.11.0" in html
+
+
+def test_ver_selectors_table(gen):
+    html = render.render_page("en", "{{table:ver_selectors}}", gen, for_print=False)
+    assert "VER_SEL_FW" in html
+    assert "VER_SEL_CMD_SET" in html
+    assert "0x00" in html
+    assert "0x01" in html
+
+
+def test_log_fields_table(gen):
+    html = render.render_page("en", "{{table:log_fields}}", gen, for_print=False)
+    assert "LOG_FIELD_VDD" in html
+    assert "LOG_FIELD_RAT" in html
+    assert "0x40" in html
+
+
+def test_burst_limits_table(gen):
+    html = render.render_page("en", "{{table:burst_limits}}", gen, for_print=False)
+    assert "BURST_PERIOD_MS_MAX" in html
+    assert "1000" in html
+    assert "BURST_MAX_FIELDS" in html
+    assert "16" in html
+
+
+def test_no_notes_suffix_drops_the_note_column(gen):
+    """Job 4: an explicit call-site suffix must drop the Notes/Meaning
+    column entirely -- for a kind with no group/width argument (the suffix
+    lands in the placeholder's second segment) and for one that also takes
+    a real argument (the suffix then needs a third segment)."""
+    with_notes = render.render_page("en", "{{table:op_modes}}", gen, for_print=False)
+    without_notes = render.render_page("en", "{{table:op_modes:no_notes}}", gen, for_print=False)
+    assert "Meaning" in with_notes
+    assert "Meaning" not in without_notes
+    # The identifiers themselves must still be there -- only the note text
+    # (and its header) is gone, not the whole table.
+    assert "OPMODE_ISP" in without_notes
+    # OPMODE_ISP's real note names an FSM state and a driver function --
+    # exactly the product-internal detail no_notes exists to drop.
+    assert "ST_ISP_MODE" in with_notes
+    assert "ST_ISP_MODE" not in without_notes
+
+    with_notes_grp = render.render_page("en", "{{table:opcodes:core}}", gen, for_print=False)
+    without_notes_grp = render.render_page(
+        "en", "{{table:opcodes:core:no_notes}}", gen, for_print=False
+    )
+    assert "Notes" in with_notes_grp
+    assert "Notes" not in without_notes_grp
+    assert "CMD_PING" in without_notes_grp
+
+
+def test_no_notes_typo_still_raises_unknown_table(gen):
+    """The malformed-placeholder guard must keep working for the new
+    syntax: a misspelled modifier is a call-site typo, not silent text."""
+    with pytest.raises(render.UnknownTable):
+        render.render_page("en", "{{table:op_modes:no_note}}", gen, for_print=False)
+    with pytest.raises(render.UnknownTable):
+        render.render_page("en", "{{table:opcodes:core:no_note}}", gen, for_print=False)

@@ -27,7 +27,22 @@ LANG_TITLE = {
     "zh": "Celfras Standard Protocol",
 }
 
-_PLACEHOLDER = re.compile(r"\{\{table:([a-z_]+)(?::([a-z_0-9]+))?\}\}")
+# {{table:<kind>}}, {{table:<kind>:<arg>}}, and now also
+# {{table:<kind>:<arg>:no_notes}} -- an explicit call-site suffix that drops
+# a generated table's Notes/Meaning column. For a kind that takes no real
+# <arg> (op_modes, errors, ver_selectors, log_fields, bridge), "no_notes"
+# is written in the <arg> slot itself: {{table:op_modes:no_notes}}. Both
+# forms are normalized by _consume_no_notes() below. This exists because
+# generated tables are for identifiers and values, which must never go
+# stale; a note column carries firmware-comment prose (FSM state names,
+# driver function names, argument names) that is a convenience for firmware
+# developers, not normative standard text -- see PLATFORM_HANDOFF-adjacent
+# review that found OPMODE_ISP's and CMD_RESET's notes leaking exactly that
+# into the neutral half of the document. Dropping the column at an explicit
+# call site is honest; guessing which words are product-internal is not.
+_PLACEHOLDER = re.compile(
+    r"\{\{table:([a-z_]+)(?::([a-z_0-9]+))?(?::([a-z_0-9]+))?\}\}"
+)
 
 # Loose, case-insensitive net for anything table-ish left over after
 # _PLACEHOLDER has already consumed every well-formed placeholder. Wrong
@@ -72,30 +87,85 @@ def _table(headers: list[str], rows: list[list[str]]) -> str:
     return f'<div class="tw"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
-def _build_table(kind: str, arg: str | None, gen: dict) -> str:
+def _consume_no_notes(arg: str | None, modifier: str | None) -> tuple[str | None, bool]:
+    """Normalize the "no_notes" modifier regardless of which placeholder
+    segment it arrived in.
+
+    A kind that also takes a real <arg> gets it as the third segment
+    ({{table:opcodes:core:no_notes}}); a kind with no <arg> of its own gets
+    it as the second ({{table:op_modes:no_notes}}), since that slot would
+    otherwise be unused. Either way this returns the *real* arg (None if
+    there wasn't one) plus a no_notes flag, so every branch in
+    _build_table() only has to check one thing. Anything in the modifier
+    slot other than "no_notes" is a call-site typo, not silent text.
+    """
+    if modifier is not None:
+        if modifier != "no_notes":
+            raise UnknownTable(f"unknown table modifier {modifier!r}")
+        return arg, True
+    if arg == "no_notes":
+        return None, True
+    return arg, False
+
+
+def _build_table(kind: str, arg: str | None, modifier: str | None, gen: dict) -> str:
     if kind == "opcodes":
+        arg, no_notes = _consume_no_notes(arg, modifier)
         cmds = gen["opcodes"]["commands"]
         if arg:
             cmds = [c for c in cmds if c["group"] == arg]
             if not cmds:
                 raise UnknownTable(f"no commands in group {arg!r}")
-        return _table(
-            ["ID", "Name", "Request", "Response", "Notes"],
-            [[f"0x{c['id']:02X}", c["name"], c["req"], c["resp"], c["note"]] for c in cmds],
-        )
-    if kind == "errors":
-        return _table(["Code", "Name", "Meaning"],
-                      [[f"0x{e['code']:02X}", e["name"], e["note"]]
-                       for e in gen["opcodes"]["errors"]])
-    if kind == "op_modes":
-        return _table(["Value", "Name", "Meaning"],
-                      [[f"0x{m['value']:02X}", m["name"], m["note"]]
-                       for m in gen["opcodes"]["op_modes"]])
+        headers = ["ID", "Name", "Request", "Response"] + ([] if no_notes else ["Notes"])
+        rows = []
+        for c in cmds:
+            row = [f"0x{c['id']:02X}", c["name"], c["req"], c["resp"]]
+            if not no_notes:
+                row.append(c["note"])
+            rows.append(row)
+        return _table(headers, rows)
+    if kind in ("errors", "op_modes", "ver_selectors", "log_fields"):
+        arg, no_notes = _consume_no_notes(arg, modifier)
+        if arg is not None:
+            raise UnknownTable(f"{kind} takes no argument (got {arg!r})")
+        key, id_fmt, items = {
+            "errors": ("code", "0x{:02X}", gen["opcodes"]["errors"]),
+            "op_modes": ("value", "0x{:02X}", gen["opcodes"]["op_modes"]),
+            "ver_selectors": ("value", "0x{:02X}", gen["opcodes"]["ver_selectors"]),
+            "log_fields": ("bit", "0x{:02X}", gen["opcodes"]["log_fields"]),
+        }[kind]
+        id_header = {"code": "Code", "value": "Value", "bit": "Bit"}[key]
+        headers = [id_header, "Name"] + ([] if no_notes else ["Meaning"])
+        rows = []
+        for it in items:
+            row = [id_fmt.format(it[key]), it["name"]]
+            if not no_notes:
+                row.append(it["note"])
+            rows.append(row)
+        return _table(headers, rows)
     if kind == "bridge":
-        return _table(["ID", "Name", "Notes"],
-                      [[f"0x{c['id']:02X}", c["name"], c["note"]]
-                       for c in gen["bridge"]["commands"]])
+        arg, no_notes = _consume_no_notes(arg, modifier)
+        if arg is not None:
+            raise UnknownTable(f"bridge takes no argument (got {arg!r})")
+        headers = ["ID", "Name"] + ([] if no_notes else ["Notes"])
+        rows = []
+        for c in gen["bridge"]["commands"]:
+            row = [f"0x{c['id']:02X}", c["name"]]
+            if not no_notes:
+                row.append(c["note"])
+            rows.append(row)
+        return _table(headers, rows)
+    if kind == "burst_limits":
+        # No note column exists here at all (BURST_* constants carry no
+        # same-line comments in app_proto.h), so no_notes is accepted for
+        # symmetry with the other kinds but has nothing to drop.
+        arg, _no_notes = _consume_no_notes(arg, modifier)
+        if arg is not None:
+            raise UnknownTable(f"burst_limits takes no argument (got {arg!r})")
+        return _table(["Name", "Value"],
+                      [[b["name"], b["value"]] for b in gen["opcodes"]["burst_limits"]])
     if kind in ("par", "var"):
+        arg, _no_notes = _consume_no_notes(arg, modifier)
         width = arg or ("par16" if kind == "par" else "var8")
         rows_src = gen["varpar"][kind].get(width)
         if rows_src is None:
@@ -132,7 +202,7 @@ def _map_unprotected(text: str, fn) -> str:
 def expand_tables(md_text: str, gen: dict) -> str:
     def sub(chunk: str) -> str:
         def repl(m: re.Match[str]) -> str:
-            return _build_table(m.group(1), m.group(2), gen)
+            return _build_table(m.group(1), m.group(2), m.group(3), gen)
 
         return _PLACEHOLDER.sub(repl, chunk)
 

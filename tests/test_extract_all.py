@@ -100,3 +100,16 @@ def test_committed_generated_files_are_the_public_edition():
         for n in forbidden:
             if re.search(rf'(?<![\d.]){n}(?![\d.])', blob):
                 raise AssertionError(f"{n} leaked into committed {relpath}")
+
+
+def test_opcodes_json_carries_the_new_standard_tables(tmp_path: Path):
+    """Jobs 1-3: ver_selectors, log_fields and burst_limits must reach the
+    generated opcodes.json alongside commands/errors/op_modes, or the
+    renderer has nothing to build the new placeholders from."""
+    extract_all.run(tmp_path, internal=False)
+    d = json.loads((tmp_path / "opcodes.json").read_text(encoding="utf-8"))
+    assert {"commands", "errors", "op_modes",
+            "ver_selectors", "log_fields", "burst_limits"} <= set(d)
+    assert any(s["name"] == "VER_SEL_FW" for s in d["ver_selectors"])
+    assert any(f["name"] == "LOG_FIELD_VDD" for f in d["log_fields"])
+    assert any(b["name"] == "BURST_PERIOD_MS_MAX" for b in d["burst_limits"])

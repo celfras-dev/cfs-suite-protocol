@@ -379,5 +379,86 @@
       "name": "OPMODE_TEST",
       "note": "reserved, TBD: CMD_SET_MODE acks OK, no state change"
     }
+  ],
+  "ver_selectors": [
+    {
+      "value": 0,
+      "name": "VER_SEL_FW",
+      "note": "the firmware build on this board"
+    },
+    {
+      "value": 1,
+      "name": "VER_SEL_CMD_SET",
+      "note": "the opcode table it implements"
+    }
+  ],
+  "log_fields": [
+    {
+      "bit": 1,
+      "name": "LOG_FIELD_VDD",
+      "note": ""
+    },
+    {
+      "bit": 2,
+      "name": "LOG_FIELD_VAT",
+      "note": ""
+    },
+    {
+      "bit": 4,
+      "name": "LOG_FIELD_IAT",
+      "note": ""
+    },
+    {
+      "bit": 8,
+      "name": "LOG_FIELD_PWR",
+      "note": ""
+    },
+    {
+      "bit": 16,
+      "name": "LOG_FIELD_DUTY",
+      "note": ""
+    },
+    {
+      "bit": 32,
+      "name": "LOG_FIELD_PROT",
+      "note": ""
+    },
+    {
+      "bit": 64,
+      "name": "LOG_FIELD_RAT",
+      "note": ""
+    }
+  ],
+  "burst_limits": [
+    {
+      "name": "BURST_DURATION_MS_INFINITE",
+      "value": 0,
+      "note": ""
+    },
+    {
+      "name": "BURST_DURATION_MS_MAX",
+      "value": 1000000,
+      "note": ""
+    },
+    {
+      "name": "BURST_DURATION_MS_MIN",
+      "value": 100,
+      "note": ""
+    },
+    {
+      "name": "BURST_MAX_FIELDS",
+      "value": 16,
+      "note": ""
+    },
+    {
+      "name": "BURST_PERIOD_MS_MAX",
+      "value": 1000,
+      "note": ""
+    },
+    {
+      "name": "BURST_PERIOD_MS_MIN",
+      "value": 10,
+      "note": ""
+    }
   ]
 }

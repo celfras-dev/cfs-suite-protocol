@@ -49,6 +49,85 @@ def forbidden_public_values() -> set[int]:
     return values
 
 
+# The leak gate matches raw numbers, not what they mean. BURST_PERIOD_MS_MAX
+# (app_proto.h, a genuine Part-I protocol constant added for Job 3 of the
+# 2026-09-10 placeholder-gap work) is 1000 -- the same number
+# LED_BREATH_PERIOD_MS (a product default in par_map.json) happens to
+# default to. Both facts are real; forbidden_public_values() only sees the
+# number, so it cannot tell them apart. Each entry here names the exact
+# numeric value AND the standard constant that legitimately carries it, so
+# the exemption is a fact about the source, not a hole punched by hand.
+#
+# Keep this list minimal: every entry silently widens the gate for that one
+# number everywhere in the built document, not just at the place it is
+# actually meant. It must not be extended, or trusted, on the strength of
+# this comment alone -- verify_protocol_value_exemptions() (below) and
+# tests/test_build_exemptions.py re-derive each entry from app_proto.h at
+# HEAD every run, so a stale name or a changed value breaks the suite
+# instead of quietly staying exempt.
+PROTOCOL_VALUE_EXEMPTIONS = (
+    {"value": 1000, "constant": "BURST_PERIOD_MS_MAX"},
+)
+
+
+def exempted_public_values() -> set[int]:
+    """The numeric values PROTOCOL_VALUE_EXEMPTIONS excuses from the leak
+    gate."""
+    return {e["value"] for e in PROTOCOL_VALUE_EXEMPTIONS}
+
+
+def leak_gate_values() -> set[int]:
+    """What the public-leak gate actually checks built output for: every
+    product default (forbidden_public_values()) minus the ones explicitly
+    exempted as real, named protocol constants. Callers that scan built
+    output for a leak (tests/test_public_leak.py) must iterate this, not
+    forbidden_public_values() directly -- the latter is also used on its
+    own (e.g. to prove the gate isn't vacuous), where the exemption must
+    NOT be subtracted first.
+    """
+    verify_protocol_value_exemptions()
+    return forbidden_public_values() - exempted_public_values()
+
+
+def verify_protocol_value_exemptions() -> None:
+    """Prove every PROTOCOL_VALUE_EXEMPTIONS entry against the firmware
+    source, mechanically -- not by trusting the comment above it.
+
+    Re-derives every standard identifier this repository extracts from
+    app_proto.h (opcodes, errors, op_modes, VER_SEL_*, LOG_FIELD_*,
+    BURST_*) at HEAD and checks each exemption's named constant exists
+    there with exactly the claimed value. A renamed, removed, or
+    re-valued constant raises here, which is what makes an exemption
+    "verified, not merely asserted": the exemption cannot silently drift
+    away from the source it claims to justify.
+    """
+    from tools.extract import opcodes
+
+    known: dict[str, int] = {}
+    known.update({c["name"]: c["id"] for c in opcodes.extract()})
+    known.update({e["name"]: e["code"] for e in opcodes.errors()})
+    known.update({m["name"]: m["value"] for m in opcodes.op_modes()})
+    known.update({s["name"]: s["value"] for s in opcodes.ver_selectors()})
+    known.update({f["name"]: f["bit"] for f in opcodes.log_fields()})
+    known.update({b["name"]: b["value"] for b in opcodes.burst_limits()})
+
+    for e in PROTOCOL_VALUE_EXEMPTIONS:
+        name, value = e["constant"], e["value"]
+        if name not in known:
+            raise RuntimeError(
+                f"PROTOCOL_VALUE_EXEMPTIONS names {name!r}, which is not a "
+                "known standard constant in app_proto.h at HEAD -- stale "
+                "or invented exemption"
+            )
+        if known[name] != value:
+            raise RuntimeError(
+                f"PROTOCOL_VALUE_EXEMPTIONS claims {name} == {value}, but "
+                f"app_proto.h now defines it as {known[name]} -- update "
+                "the exemption (or remove it, if the constant no longer "
+                "collides with a product default)"
+            )
+
+
 def _load_generated(gen_dir: Path) -> dict:
     return {p.stem: json.loads(p.read_text(encoding="utf-8"))
             for p in sorted(gen_dir.glob("*.json"))}

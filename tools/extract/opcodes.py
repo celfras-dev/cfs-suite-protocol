@@ -25,6 +25,27 @@ _ERR_RE = re.compile(
 _MODE_RE = re.compile(
     r"^\s*#define\s+(OPMODE_[A-Z_]+)\s+0x([0-9A-Fa-f]{2})u?[ \t]*(?://\s*(.*))?$", re.M
 )
+# VER_SEL_* (CMD_GET_VERSION's [sel u8] selectors) and LOG_FIELD_* (the
+# CMD_LOG_BURST_START fields_mask bits) are standard values in the same
+# shared block as the opcodes above -- see app_proto.h's own comment there.
+# Same same-line comment discipline as _CMD_RE/_ERR_RE/_MODE_RE: the gap
+# before the trailing comment is `[ \t]*`, never `\s*`, so a comment-less
+# #define cannot absorb a stray `//` line meant for the next one.
+_VER_SEL_RE = re.compile(
+    r"^\s*#define\s+(VER_SEL_[A-Z0-9_]+)\s+0x([0-9A-Fa-f]{2})u?[ \t]*(?://\s*(.*))?$",
+    re.M,
+)
+_LOG_FIELD_RE = re.compile(
+    r"^\s*#define\s+(LOG_FIELD_[A-Z0-9_]+)\s+0x([0-9A-Fa-f]{2})u?[ \t]*(?://\s*(.*))?$",
+    re.M,
+)
+# The burst period/duration/field-count bounds sit in the same shared block
+# and are plain decimal (no "0x" prefix), unlike everything else in this
+# module -- hence the separate `(\d+)` capture rather than reusing the hex
+# group above.
+_BURST_LIMIT_RE = re.compile(
+    r"^\s*#define\s+(BURST_[A-Z0-9_]+)\s+(\d+)u?[ \t]*(?://\s*(.*))?$", re.M
+)
 
 _GROUPS = [
     (0x01, 0x0F, "core"),
@@ -99,4 +120,44 @@ def op_modes() -> list[dict]:
         ({"value": int(h, 16), "name": n, "note": (c or "").strip()}
          for n, h, c in _MODE_RE.findall(_text())),
         key=lambda m: m["value"],
+    )
+
+
+def ver_selectors() -> list[dict]:
+    """Job 1: the CMD_GET_VERSION [sel u8] selector values -- standard,
+    not product, values (app_proto.h's own comment block says this region
+    is shared byte-for-byte across projects)."""
+    return sorted(
+        ({"value": int(h, 16), "name": n, "note": (c or "").strip()}
+         for n, h, c in _VER_SEL_RE.findall(_text())),
+        key=lambda s: s["value"],
+    )
+
+
+def log_fields() -> list[dict]:
+    """Job 2: the CMD_LOG_BURST_START fields_mask bit assignments. Which
+    bits a given product has wired to a real reading is project vocabulary
+    and stays out of this table; the bit assignments themselves are
+    standard."""
+    return sorted(
+        ({"bit": int(h, 16), "name": n, "note": (c or "").strip()}
+         for n, h, c in _LOG_FIELD_RE.findall(_text())),
+        key=lambda f: f["bit"],
+    )
+
+
+def burst_limits() -> list[dict]:
+    """Job 3: BURST_PERIOD_MS_MIN/MAX, BURST_DURATION_MS_MIN/MAX and
+    BURST_MAX_FIELDS -- the CMD_LOG_BURST_START argument bounds. Matched
+    generically on the BURST_ prefix (mechanical, not a hand-picked list),
+    which also happens to sweep up BURST_DURATION_MS_INFINITE from the same
+    block; that is harmless, it is just as much a standard constant as the
+    other five.
+
+    Sorted by name (there is no natural id/value ordering across these
+    unrelated constants, unlike the hex-keyed tables above)."""
+    return sorted(
+        ({"name": n, "value": int(v), "note": (c or "").strip()}
+         for n, v, c in _BURST_LIMIT_RE.findall(_text())),
+        key=lambda b: b["name"],
     )

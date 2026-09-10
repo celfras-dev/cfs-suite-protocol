@@ -58,6 +58,19 @@ def test_no_product_threshold_leaks_into_the_site(public_build):
             )
 
 
+def test_no_product_threshold_leaks_into_site_extra(public_build):
+    """Non-language site artefacts (currently just index.html) are not part
+    of the `site` dict -- see the comment in tools/build.py -- so they need
+    their own pass over the same forbidden set. Anything added to
+    `site_extra` in the future is covered automatically by this loop."""
+    for p in public_build["site_extra"].values():
+        text = p.read_text(encoding="utf-8")
+        for value in build.forbidden_public_values():
+            assert not re.search(rf"(?<![\d.]){value}(?![\d.])", text), (
+                f"{value} leaked into {p.name}"
+            )
+
+
 def test_internal_edition_is_marked_and_kept_apart(tmp_path):
     got = build.build(internal=True, out_root=tmp_path)
     for p in got["pdfs"].values():

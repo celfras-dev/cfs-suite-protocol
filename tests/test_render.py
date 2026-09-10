@@ -21,14 +21,46 @@ def test_placeholder_becomes_a_table(gen):
 
 
 def test_group_filter_excludes_other_groups(gen):
-    html = render.render_page("en", "{{table:opcodes:core}}", gen, for_print=False)
-    assert "CMD_PING" in html
-    assert "CMD_GET_TUNING_PAR" not in html
+    core_names = {c["name"] for c in gen["opcodes"]["commands"] if c["group"] == "core"}
+    tuning_names = {c["name"] for c in gen["opcodes"]["commands"] if c["group"] == "tuning"}
+    assert core_names and tuning_names and core_names.isdisjoint(tuning_names)
+
+    core_html = render.render_page("en", "{{table:opcodes:core}}", gen, for_print=False)
+    tuning_html = render.render_page("en", "{{table:opcodes:tuning}}", gen, for_print=False)
+
+    assert core_html != tuning_html
+    for name in core_names:
+        assert name in core_html
+        assert name not in tuning_html
+    for name in tuning_names:
+        assert name in tuning_html
+        assert name not in core_html
 
 
 def test_unknown_placeholder_raises(gen):
     with pytest.raises(render.UnknownTable):
         render.render_page("en", "{{table:nope}}", gen, for_print=False)
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        "{{table:opcodes:CORE}}",
+        "{{table:opcodes-core}}",
+        "{{ table:opcodes:core }}",
+        "{{table:par16}}",
+    ],
+)
+def test_malformed_placeholder_raises_not_ships_as_text(gen, malformed):
+    with pytest.raises(render.UnknownTable):
+        render.render_page("en", malformed, gen, for_print=False)
+
+
+def test_placeholder_inside_fenced_code_block_is_left_literal(gen):
+    md = "# T\n\n```\nUse {{table:opcodes:core}} to embed a table.\n```\n"
+    html = render.render_page("en", md, gen, for_print=False)
+    assert "{{table:opcodes:core}}" in html
+    assert "<table" not in html
 
 
 def test_language_font_stack_is_applied(gen):

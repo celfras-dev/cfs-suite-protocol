@@ -19,4 +19,13 @@ h2, h3 { page-break-after: avoid; }
 .cover .ver { font-size: 1.3rem; color: #555; }
 .badge-internal { margin-top: 2rem; color: #a1160a; font-weight: 700;
                   letter-spacing: .06em; }
-body.print .web-only { display: none; }
+
+/* Web relies on .tw's horizontal scrollbar to keep the generated opcode and
+   par/var tables usable; a printed page (or print-to-PDF) has no scrollbar,
+   so anything wider than the page is silently clipped at the edge instead.
+   Make wide tables fit on paper without touching the web layout above. */
+@media print {
+  .tw { overflow: visible; }
+  table { font-size: .72em; }
+  th, td { overflow-wrap: anywhere; }
+}

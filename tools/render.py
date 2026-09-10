@@ -29,9 +29,38 @@ LANG_TITLE = {
 
 _PLACEHOLDER = re.compile(r"\{\{table:([a-z_]+)(?::([a-z_0-9]+))?\}\}")
 
+# Loose, case-insensitive net for anything table-ish left over after
+# _PLACEHOLDER has already consumed every well-formed placeholder. Wrong
+# case (`{{table:opcodes:CORE}}`), wrong separator (`{{table:opcodes-core}}`),
+# stray spaces (`{{ table:opcodes:core }}`) and an un-split kind:arg
+# (`{{table:par16}}`) are all realistic authoring typos, and all of them
+# still contain "table" between a `{{` and a `}}`. We deliberately do NOT
+# flag every stray `{{...}}` pair regardless of content: the prose here is
+# Markdown, not a template language, but authors legitimately show other
+# double-brace-shaped things in running text (e.g. quoting a *different*
+# tool's placeholder syntax, or a C-like `{{0}}` initializer in a code
+# comment that lives outside a fence). Restricting the net to the word
+# "table" keeps the false-positive rate near zero while still catching every
+# case this review named, because a mistyped *table* placeholder always
+# still mentions "table" -- an author does not typo the word itself, only
+# the punctuation around it.
+_RESIDUE = re.compile(r"\{\{[^}]*table[^}]*\}\}", re.IGNORECASE)
+
+# Fenced code blocks (``` or ~~~, matched by a backreference so a block
+# opened with one marker only closes on the same marker) and inline code
+# spans are protected from both placeholder substitution and the residue
+# scan below -- this doc's authoring guidance needs to show the
+# {{table:...}} syntax literally at least once, inside a code sample, and
+# that must not itself be treated as a malformed placeholder.
+_PROTECTED = re.compile(
+    r"(?P<fence>^(?P<mark>`{3,}|~{3,})[^\n]*\n.*?\n(?P=mark)[ \t]*$)"
+    r"|(?P<inline>`[^`\n]+`)",
+    re.MULTILINE | re.DOTALL,
+)
+
 
 class UnknownTable(Exception):
-    """A {{table:...}} placeholder names something not generated."""
+    """A {{table:...}} placeholder names something not generated, or is malformed."""
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> str:
@@ -87,11 +116,39 @@ def _build_table(kind: str, arg: str | None, gen: dict) -> str:
     raise UnknownTable(f"unknown table kind {kind!r}")
 
 
-def expand_tables(md_text: str, gen: dict) -> str:
-    def sub(m: re.Match[str]) -> str:
-        return _build_table(m.group(1), m.group(2), gen)
+def _map_unprotected(text: str, fn) -> str:
+    """Apply fn(chunk) to every part of text that is NOT inside a fenced
+    code block or inline code span; protected regions pass through as-is."""
+    out = []
+    pos = 0
+    for m in _PROTECTED.finditer(text):
+        out.append(fn(text[pos : m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(fn(text[pos:]))
+    return "".join(out)
 
-    return _PLACEHOLDER.sub(sub, md_text)
+
+def expand_tables(md_text: str, gen: dict) -> str:
+    def sub(chunk: str) -> str:
+        def repl(m: re.Match[str]) -> str:
+            return _build_table(m.group(1), m.group(2), gen)
+
+        return _PLACEHOLDER.sub(repl, chunk)
+
+    expanded = _map_unprotected(md_text, sub)
+
+    def check(chunk: str) -> str:
+        bad = _RESIDUE.search(chunk)
+        if bad:
+            raise UnknownTable(
+                f"malformed table placeholder {bad.group(0)!r}; "
+                "expected exact syntax {{table:<kind>}} or {{table:<kind>:<arg>}}"
+            )
+        return chunk
+
+    _map_unprotected(expanded, check)
+    return expanded
 
 
 def render_page(lang: str, md_text: str, gen: dict, *, for_print: bool) -> str:

@@ -1,8 +1,16 @@
 import json
+import re
 
 from tools.extract import varpar
 
-FORBIDDEN_IN_PUBLIC = [350, 3400, 2000, 8000, 300, 180000, 1000]
+
+def forbidden_values() -> set:
+    """Every value the product bakes in, taken from the source rather than a
+    hand-written list. A hand-written one was already wrong once: it missed
+    CHG_TIMEOUT_TH (600) and LONG_PUFF_TH (10000)."""
+    return {r["default"]
+            for rows in varpar.extract(internal=True)["par"].values()
+            for r in rows if "default" in r}
 
 
 def test_public_has_ids_names_units():
@@ -20,10 +28,22 @@ def test_public_carries_no_default_values():
             assert "default" not in e, f"{e['name']} leaked a default"
 
 
+def test_forbidden_values_found_real_defaults():
+    # Guards against the derivation silently finding nothing (an empty or
+    # trivially small set would make the leak test below vacuous). Check for
+    # specific known-present values rather than a count -- a count is exactly
+    # the kind of fact that goes stale (see the hand-written list this
+    # replaced).
+    values = forbidden_values()
+    assert 350 in values      # DRY_PUFF_ABS_TEMP_TH
+    assert 600 in values      # CHG_TIMEOUT_TH
+
+
 def test_public_json_contains_no_forbidden_number():
     blob = json.dumps(varpar.extract(internal=False))
-    for n in FORBIDDEN_IN_PUBLIC:
-        assert str(n) not in blob, f"{n} leaked into the public appendix"
+    for n in forbidden_values():
+        assert not re.search(rf'(?<![\d.]){n}(?![\d.])', blob), \
+            f"{n} leaked into the public appendix"
 
 
 def test_internal_carries_defaults():

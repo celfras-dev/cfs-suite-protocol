@@ -11,6 +11,11 @@ def public_build(tmp_path_factory):
     return build.build(internal=False, out_root=tmp_path_factory.mktemp("pub"))
 
 
+@pytest.fixture(scope="module")
+def internal_build(tmp_path_factory):
+    return build.build(internal=True, out_root=tmp_path_factory.mktemp("int"))
+
+
 def _pdf_text(p):
     return "\n".join(pg.extract_text() or "" for pg in pypdf.PdfReader(str(p)).pages)
 
@@ -58,3 +63,38 @@ def test_internal_edition_is_marked_and_kept_apart(tmp_path):
     for p in got["pdfs"].values():
         assert "internal" in str(p.parent).replace("\\", "/")
         assert "INTERNAL" in _pdf_text(p)
+
+
+def test_no_product_threshold_leaks_into_print_html(public_build):
+    """The authoritative leak check: print_html is the literal HTML string
+    each PDF is printed from. It is plain text, so unlike the PDF-text
+    check above it cannot be fooled by how a particular extractor reads
+    glyphs back out of the rendered PDF (letter-spacing splitting digits,
+    a non-breaking space inside a number, text drawn into a <canvas> --
+    see the comment in tools/build.py). Kept alongside, not instead of,
+    the PDF-text check: that one catches a different class of mistake,
+    such as a bug in pdf.py itself changing what actually gets printed."""
+    for lang, html in public_build["print_html"].items():
+        for value in build.forbidden_public_values():
+            assert not re.search(rf"(?<![\d.]){value}(?![\d.])", html), (
+                f"{value} leaked into the {lang} public print HTML"
+            )
+
+
+def test_par16_defaults_render_only_in_internal_build(public_build, internal_build):
+    """Exercises the actual mechanism this whole gate exists to protect:
+    render.py's `internal = any("default" in r for r in rows_src)`, which
+    decides whether the Default column is emitted at all. Before the
+    {{table:par:par16}} stub was added to spec/*.md, no table rendered in
+    the whole suite ever carried a default, so a regression in that one
+    line -- e.g. always showing the Default column, or never showing it --
+    would have gone undetected by every other test here."""
+    for lang in ("en", "ko", "zh"):
+        pub_html = public_build["site"][lang].read_text(encoding="utf-8")
+        int_html = internal_build["site"][lang].read_text(encoding="utf-8")
+        assert "Default" not in pub_html
+        assert "Default" in int_html
+        # LONG_PUFF_TH's real default (par16 id 6) -- must actually appear
+        # as a value, not just the column header.
+        assert "10000" in int_html
+        assert "10000" not in pub_html

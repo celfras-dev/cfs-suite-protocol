@@ -125,16 +125,22 @@ def test_par16_defaults_render_only_in_internal_build():
     the prose, not render.py."""
     from tools.extract import varpar
 
+    full = varpar.extract(internal=True)
     ph = "{{table:par:par16}}"
     pub = render.expand_tables(ph, {"varpar": varpar.extract(internal=False)})
-    int_ = render.expand_tables(ph, {"varpar": varpar.extract(internal=True)})
+    int_ = render.expand_tables(ph, {"varpar": full})
 
     assert "Default" not in pub
     assert "Default" in int_
-    # LONG_PUFF_TH's real default (par16 id 6) -- must actually appear as a
-    # value, not just the column header.
-    assert "10000" in int_
-    assert "10000" not in pub
+    # LONG_PUFF_TH's real default must actually appear as a value, not just
+    # the column header. Looked up by name at runtime rather than written
+    # as a literal here, so this test does not itself carry the real
+    # product value as text (see tests/test_tracked_source_leak.py).
+    long_puff_default = next(
+        e["default"] for e in full["par"]["par16"] if e["name"] == "LONG_PUFF_TH"
+    )
+    assert str(long_puff_default) in int_
+    assert str(long_puff_default) not in pub
 
 
 def test_shipped_prose_actually_places_a_par_or_var_table():

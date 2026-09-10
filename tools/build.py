@@ -27,9 +27,12 @@ def forbidden_public_values() -> set[int]:
     """Every value the product bakes in, read from the source.
 
     Deliberately not a literal tuple. The hand-written one in this plan's
-    first draft was already wrong -- it missed CHG_TIMEOUT_TH (600) and
-    LONG_PUFF_TH (10000). Deriving it means a new default in par_map.json
-    joins the gate on its own.
+    first draft was already wrong -- it missed CHG_TIMEOUT_TH and
+    LONG_PUFF_TH. (Their actual default values are deliberately not spelled
+    out here -- this docstring is itself a tracked file, and printing them
+    would be exactly the leak tests/test_tracked_source_leak.py exists to
+    catch.) Deriving it means a new default in par_map.json joins the gate
+    on its own.
     """
     from tools.extract import varpar
     values = {r["default"]
@@ -183,8 +186,9 @@ def build(internal: bool = False, out_root: Path | None = None,
     # extract_text() is a heuristic over the PDF's glyph layout, and it has
     # (at least) three known holes:
     #   1. `letter-spacing` CSS spreads a run of digits across separate
-    #      glyph placements, so "10000" can extract as "1 0 0 0 0" and slip
-    #      past a word-boundary regex. spec/assets/style.css already uses
+    #      glyph placements, so a 5-digit number like 12345 can extract as
+    #      "1 2 3 4 5" and slip past a word-boundary regex. spec/assets/
+    #      style.css already uses
     #      letter-spacing (on .badge-internal), so this is one rule change
     #      away from a real leak going undetected by that check alone.
     #   2. A non-breaking space (`&nbsp;`, U+00A0) inside a number extracts

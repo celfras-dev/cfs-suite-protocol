@@ -2,9 +2,11 @@
 
 Public editions carry ids, names, units and access only. The values a
 product bakes in (dry-puff thresholds, protection limits) are product data,
-not protocol: a standard defines what id 14 means, not that this product
-writes 350 into it. min/max are dropped from both editions -- they are the
-host GUI's spinbox limits, not part of the wire contract.
+not protocol: a standard defines what an id means, not what real number
+this product writes into it (the exact number is deliberately not used as
+an example here -- see tests/test_tracked_source_leak.py). min/max are
+dropped from both editions -- they are the host GUI's spinbox limits, not
+part of the wire contract.
 """
 from __future__ import annotations
 

@@ -80,10 +80,16 @@ def test_stale_constant_name_is_caught(monkeypatch):
 
 def test_stale_value_is_caught(monkeypatch):
     """A real constant name but the wrong value (e.g. the firmware bumped
-    it and nobody updated the exemption) must also break verification."""
+    it and nobody updated the exemption) must also break verification.
+
+    Uses an arbitrary wrong value (4242, deliberately not 1000 -- and
+    deliberately not any real product default either, so this line stays
+    clean under tests/test_tracked_source_leak.py's tracked-file scan;
+    the point of this test is only that it disagrees with the real value,
+    not what it is)."""
     monkeypatch.setattr(
         build, "PROTOCOL_VALUE_EXEMPTIONS",
-        ({"value": 2000, "constant": "BURST_PERIOD_MS_MAX"},),
+        ({"value": 4242, "constant": "BURST_PERIOD_MS_MAX"},),
     )
     with pytest.raises(Exception):
         build.verify_protocol_value_exemptions()

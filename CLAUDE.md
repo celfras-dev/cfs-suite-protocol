@@ -89,6 +89,21 @@ placeholder from all three editions, those scans would keep passing with
 nothing left to check. That test makes the precondition explicit instead of
 letting the gate go quietly vacuous.
 
+**The leak gate has two halves, and both matter.** `tests/test_public_leak.py`
+covers *built output* — the rendered site, print HTML, and PDFs. It never
+looks at this repository's own tracked source. On 2026-09-10, two internal
+working documents (a plan and a design spec, carrying real product values
+and a developer's local file paths) were committed straight into
+`docs/superpowers/` and would have been pushed with everything in them,
+because nothing scanned tracked files at all — only what `tools.build`
+produces. `tests/test_tracked_source_leak.py` is the second half: it scans
+every file `git ls-files` returns for the same `leak_gate_values()` and for
+a developer-machine path marker. A future session that adds a new kind of
+published artifact (another generated file, a new site page, an export
+format) needs to know the built-output gate does not, by itself, protect a
+document someone drops into the tree by hand — that is what the tracked-
+file half is for.
+
 ## The three editions must stay structurally identical
 
 `spec/en.md`, `ko.md`, and `zh.md` are independent hand-written prose files,

@@ -52,8 +52,10 @@ does not change the frame format in either direction.
 
 ### 1.4 Requirement language
 
-**MUST** / **MUST NOT** — absolute requirements of this standard. An
-implementation that violates one is not conforming.
+**MUST** — an absolute requirement of this standard. An implementation that
+violates one is not conforming.
+**MUST NOT** — an absolute prohibition of this standard. An implementation that
+violates one is not conforming.
 **SHOULD** — a requirement that may be departed from only for a stated reason;
 a product that departs records it in Part II.
 **MAY** — genuinely optional.
@@ -492,15 +494,19 @@ and it is interpretable only once the host knows which layer answered.
 
 This is not hypothetical. The bridge layer (§9.2) uses `0x11`-`0x15` for its
 SWD and core-control operations, `0x20`, `0x21` and `0xE1` for flash
-operations, and `0x30`-`0x35` for its own firmware update. The first block is
-worth naming precisely: `0x14` and `0x15` are core halt and core resume, which
-sit beside the SWD errors without being SWD errors, and reading them as
-transport faults has cost bench time. Those meanings are the bridge's — the
-blocks named here are the whole of that layer's allocation, and the bridge
-appendix of Part II carries the commands that raise them — and they say nothing
-about what a different layer might assign to the same numbers. A device and a bridge on one
-link can both use `0x30` for unrelated things without conflict, because the
-frame says which of them answered.
+operations, and `0x30`-`0x35` for its own firmware update. Error codes and
+opcodes are separate spaces: the `0xE1` named here is an error code, and the
+fact that `0xE1` also falls inside the bridge's reserved *opcode* band (§9.2)
+says nothing about it — where the byte sits in the frame is what decides which
+space it belongs to. The first block is worth naming precisely: `0x14` and
+`0x15` are core halt and core resume, which sit beside the SWD errors without
+being SWD errors, and reading them as transport faults has cost bench time.
+Those meanings are the bridge's — the blocks named here are the whole of that
+layer's allocation, and the bridge appendix of Part II carries the commands
+that raise them — and they say nothing about what a different layer might
+assign to the same numbers. A device and a bridge on one link can both use
+`0x30` for unrelated things without conflict, because the frame says which of
+them answered.
 
 Rules a product MUST follow when it needs its own error codes:
 
@@ -806,12 +812,12 @@ against a later product does not fail against an older one.
 **Frame layout.** Each `CMD_LOG_BURST_FRAME` payload is
 `[STATUS][tick_ms u32][field u16] ...`: the status byte of §4.2, always `0x00`;
 then a `u32` timestamp in milliseconds; then one `u16` per bit **set in the
-requested mask**, in ascending bit order — bit 0's value first, regardless of
-which bits are set. The timestamp MUST NOT decrease within a session and its
-zero point MUST NOT change during one; where that zero point sits is
-product-defined. The mask is not repeated in the frame: the host MUST decode
-using the mask it sent. A device MUST NOT reorder the values, and MUST NOT omit
-one.
+requested mask**, in ascending bit order. The order is fixed by the bit numbers
+and is not the host's to choose; a bit that is not set contributes no `u16` at
+all. The timestamp MUST NOT decrease within a session and its zero point MUST
+NOT change during one; where that zero point sits is product-defined. The mask
+is not repeated in the frame: the host MUST decode using the mask it sent. A
+device MUST NOT reorder the values, and MUST NOT omit one.
 
 **Stopping.** `CMD_LOG_BURST_STOP` is dual-purpose, and this is the shape the
 tuning group reuses (§6.4):
@@ -1046,7 +1052,7 @@ answered **N/A**, and a device with N/A items is still conforming — provided
 item 25 holds for that group's opcodes, which is what makes "not implemented"
 something a host can observe rather than something it has to be told. No item
 under Transport and framing, Requests and responses, Modes, or items 22, 23,
-24, 26 and 27 is ever N/A: those are required of every device.
+24, 25, 26 and 27 is ever N/A: those are required of every device.
 
 **Transport and framing**
 
@@ -1536,8 +1542,8 @@ talk to, one for each chip a bridge is used against: **CWM2032**, **CWM1016**
 and **CWM0508**. They are test targets, not products, and ship in nothing.
 
 Each implements exactly the six opcodes §5.2 requires to be answered in
-`OPMODE_NORMAL` — `CMD_PING`, `CMD_INFO`, `CMD_SET_MODE`, `CMD_DBG_ONLINE`,
-`CMD_GET_VERSION` and `CMD_RESET` — and nothing else, and each declares the same
+`OPMODE_NORMAL` — `CMD_PING`, `CMD_INFO`, `CMD_GET_VERSION`, `CMD_SET_MODE`,
+`CMD_DBG_ONLINE` and `CMD_RESET` — and nothing else, and each declares the same
 command-set version as the products do, for the reason §9.3 gives: the version
 names the opcode table, not the size of the implementation behind it. A device
 that implements six opcodes and answers the rest per §9.1 is as conforming as
@@ -1595,7 +1601,10 @@ changelog kept for the purpose, and each names what changed on the wire.
 - **2.9.0** (2026-09-04) — the pin-map configuration key, the first whose value
   carries meaning rather than being a flag, together with the host-side fix that
   stopped flattening configuration values to zero or one — which would have sent
-  that key's second value as its first, with a reply that agreed with itself.
+  that key's second value as its first. The bridge would then have selected the
+  first map and echoed back the value it had actually received, so the reply
+  agreed with the frame that arrived, and nothing on the wire would have shown
+  that the host had asked for the other map.
 - **2.10.0** (2026-09-08) — `CMD_FLASH_READ_EX` (`0xF5`), a read that also
   returns the fault count the plain read cannot report.
 - **2.11.0** (2026-09-09) — current. Writes to `CMD_TGT_POWER` were placed

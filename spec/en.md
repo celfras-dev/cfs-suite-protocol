@@ -16,7 +16,8 @@ anything in Part I.
 ### 1.1 What this part defines
 
 - The transport a conforming link runs on (§2).
-- The frame format, its integrity check, and the receiver's validation rules (§3).
+- The frame format, its COBS encoding, its integrity check, and the receiver's
+  validation rules (§3).
 - The request/response model, the status byte, and the core error space (§4).
 - Operating modes, and which commands are answered in each (§5).
 - The core command set and the standardised command groups (§6, §7, §8).
@@ -36,12 +37,15 @@ transport — see §2.
 **Host** — the PC-side tool. It issues requests and consumes responses and
 unsolicited frames.
 
-**Device** — the product firmware. It answers requests and may emit unsolicited
+**Device** — the product firmware. It answers requests and MAY emit unsolicited
 frames.
 
 **Bridge** — an optional relay that sits inline on the same link. It answers the
 opcodes reserved to it (§9.2) and forwards everything else to the device
-untouched. A bridge is transparent to a conforming host and device.
+untouched. A bridge is transparent to a conforming host and device. One rule
+differs for it, and only one: a bridge MUST NOT forward a frame that failed
+validation, and MAY answer such a frame rather than discarding it in silence
+(§3.7).
 
 Exactly one host and one device participate in a link. A bridge, if present,
 does not change the frame format in either direction.
@@ -74,8 +78,8 @@ conforming.
 
 **The transport backend is not part of this standard.** Whether a device serves
 its UART by DMA, by a per-byte interrupt, or by polling is an implementation
-choice: nothing on the wire distinguishes them, and no host may depend on which
-one is in use. The reference implementation ships a DMA backend and carries an
+choice: nothing on the wire distinguishes them, and a host MUST NOT depend on
+which one is in use. The reference implementation ships a DMA backend and carries an
 interrupt backend selectable at build time; the two are byte-for-byte identical
 on the link, and both are conforming. Statements about ring buffers, transmit
 queues, interrupt priorities or DMA channels belong to a product's own
@@ -168,6 +172,72 @@ is what makes the link self-synchronising — after any corruption, the next
 `0x00` restores frame alignment. A receiver MUST discard a zero-length or
 otherwise undecodable accumulation rather than treating it as a frame.
 
+The encoding is COBS as published by Cheshire and Baker, and the whole of it is
+stated below. A conforming implementation needs nothing else, and in particular
+MUST NOT be written from the one-line summary "count the non-zero bytes and
+emit the count": that produces a correct encoder for short frames and a broken
+one for long ones, and §3.4.1's `0xFF` rule is the difference.
+
+#### 3.4.1 Encoding
+
+The encoder walks the decoded frame and splits it into **groups**. Each group
+is one of:
+
+- a run of `n` non-zero bytes, `0 <= n <= 253`, terminated by a `0x00` byte of
+  the decoded frame;
+- a run of exactly 254 non-zero bytes, terminated by nothing; or
+- the final run of `n` non-zero bytes, `0 <= n <= 253`, terminated by the end
+  of the decoded frame.
+
+Each group is emitted as one **code byte** followed by that group's non-zero
+bytes, in order and unaltered. The code byte is `n + 1`, so it lies in
+`0x01`-`0xFF` and is never `0x00`. A terminating `0x00` of the decoded frame is
+**not** emitted: the code byte stands in for it, which is how the zero is
+removed from the wire.
+
+A code of `0xFF` therefore means something different from every other value:
+
+- `0x01`-`0xFE` — `code - 1` non-zero bytes follow, **and a `0x00` stood after
+  them** in the decoded frame (or the frame ended there, for the last group).
+- `0xFF` — 254 non-zero bytes follow, and **no `0x00` stood after them**. The
+  group ended only because a code byte cannot count higher.
+
+An encoder MUST emit a `0xFF` code for every complete run of 254 non-zero
+bytes, and MUST then continue with a fresh group. Splitting a long zero-free
+run MUST NOT introduce a zero that was never in the frame. An encoder MUST also
+emit a code byte for the final group even when that group carries no data
+bytes: a frame that ends exactly on a 254-byte boundary is encoded as the
+`0xFF` group followed by a lone `0x01`.
+
+The encoded frame is one byte longer than the decoded frame, plus one further
+byte for each `0xFF` code — at most `floor(n / 254)` of them for an `n`-byte
+frame. The delimiter of §3.4 adds one more.
+
+#### 3.4.2 Decoding
+
+A decoder MUST process the accumulated bytes — everything received since the
+previous delimiter, the delimiter itself excluded — as follows:
+
+1. Read one code byte. A code byte of `0x00` MUST be rejected: the encoder
+   never produces one, so the accumulation is not a frame.
+2. Copy the next `code - 1` bytes to the output unaltered. If fewer than
+   `code - 1` bytes remain, the frame MUST be rejected.
+3. If the code was **not** `0xFF` **and** bytes still remain, append one `0x00`
+   byte to the output. If the code was `0xFF`, or nothing remains, append
+   nothing.
+4. If bytes remain, return to step 1.
+
+A decoder MUST reject the whole frame rather than pass a partial one upward.
+
+Step 3 is the exact inverse of the two code meanings, and both of its
+conditions carry weight. Appending a zero after a `0xFF` group inserts a byte
+the sender never sent. Appending one after the *final* group appends a byte
+that was only ever the end of the frame. Either way the decoded length is
+wrong by one or more bytes, so the frame fails the `LEN` and CRC checks of
+§3.7 and is discarded — which means a wrong decoder shows up as a CRC failure
+on long frames, not as a decode failure. An implementer chasing that symptom
+SHOULD check step 3 before re-checking the CRC.
+
 ### 3.5 SEQ
 
 `SEQ` correlates a response with its request.
@@ -187,10 +257,14 @@ NOT issue requests with `SEQ = 0` on a link where streaming (§7) is in use: a
 host-initiated stop and a device-initiated stop for the same command would
 otherwise be indistinguishable (§7.2).
 
-### 3.6 A worked frame
+### 3.6 Worked frames
 
-A complete `CMD_PING` request with `SEQ = 0x07` and no payload. Every byte below
-is computed, not illustrative.
+Every byte in this section is computed against the reference implementation,
+not illustrative.
+
+#### 3.6.1 A six-byte request
+
+A complete `CMD_PING` request with `SEQ = 0x07` and no payload.
 
 Decoded frame — six bytes:
 
@@ -226,28 +300,105 @@ On the wire, after COBS encoding and the delimiter — eight bytes:
 | 7 | `00` | Frame delimiter — not COBS data, not covered by the CRC |
 
 Note what COBS did: the one `0x00` in the decoded frame (the `LEN` high byte)
-was removed and encoded as a group boundary. That is the whole mechanism.
+was removed, and the code byte that replaced it is `0x02` — one data byte, then
+a zero (§3.4.1). The final code is `0x05`: four data bytes, then the end of the
+frame.
+
+#### 3.6.2 A frame with a 254-byte run
+
+The frame above cannot show the `0xFF` code, because six bytes contain no long
+run. This one can. It is a firmware-image data request, which is where a long
+zero-free run occurs in practice: image bytes are arbitrary and routinely go
+hundreds of bytes without a zero. Its opcode belongs to the band reserved to
+the bridge layer (§9.2) and is defined in Part II — the framing of this section
+is identical in both bands, and this is the case that exercises it.
+
+The decoded frame is 266 bytes:
+
+| Byte(s) | Value | Field |
+|---|---|---|
+| 0-1 | `08 01` | `LEN` = 264 |
+| 2 | `E9` | `CMD` |
+| 3 | `09` | `SEQ` |
+| 4-7 | `00 10 00 00` | image offset, `u32` LE |
+| 8-263 | `01 02 03` … `FD FE 01 02` | 256 image bytes; byte `8 + i` holds `(i mod 254) + 1`, so no byte of the run is zero |
+| 264-265 | `1A 86` | `CRC16` = `0x861A`, little-endian |
+
+Encoded it is 268 bytes, 269 with the delimiter, in five COBS groups:
+
+| Encoded byte(s) | Code | Data bytes | What the code says |
+|---|---|---|---|
+| 0-4 | `05` | `08 01 E9 09` | four non-zero bytes, then a `0x00` — decoded byte 4 |
+| 5-6 | `02` | `10` | one non-zero byte, then a `0x00` — decoded byte 6 |
+| 7 | `01` | — | no data byte, then a `0x00` — decoded byte 7 |
+| 8-262 | `FF` | `01 02` … `FD FE` (254 bytes) | 254 non-zero bytes and **no** zero after them |
+| 263-267 | `05` | `01 02 1A 86` | four non-zero bytes, then the end of the frame |
+| 268 | — | `00` | Frame delimiter — not COBS data, not covered by the CRC |
+
+The first encoded bytes are therefore `05 08 01 E9 09 02 10 01 FF 01 02 03 04`
+…, and the last are … `FB FC FD FE 05 01 02 1A 86 00`.
+
+The `0xFF` at encoded byte 8 is the point of the example. Its 254 data bytes
+are decoded bytes 8-261; the group that follows resumes at decoded byte 262
+with nothing between them. A decoder that inserts a `0x00` there produces 267
+decoded bytes instead of 266, and the frame — which arrived intact — fails both
+the `LEN` check and the CRC check and is discarded with no reply.
+
+Note the last group too. Its code is `0x05`, not `0xFF`, and the four bytes it
+carries are followed by the end of the frame rather than by a zero: decoded
+byte 265 is the CRC's high byte, and nothing follows it. A decoder that appends
+an implied zero after the final group is wrong in the same way and by the same
+one byte.
 
 ### 3.7 Receiver validation, in order
 
 A receiver MUST apply these checks, in this order, and MUST discard the frame on
 the first failure:
 
-1. COBS decode succeeds and yields at least six bytes.
+1. COBS decode (§3.4.2) succeeds and yields at least six bytes.
 2. The CRC over the decoded frame, excluding its last two bytes, equals the
    `CRC16` those two bytes carry.
 3. `LEN` equals the decoded length minus two.
 
-A frame that fails any of these MUST be discarded **silently**. The device MUST
-NOT answer it. The `CMD` and `SEQ` of a frame that failed its integrity check
-cannot be trusted, so there is no opcode to answer under and no token to answer
-with; a reply would be a guess, addressed to a request that may never have been
-sent. (`ERR_BAD_CRC` in §4.3 exists for a layer that *can* attribute a bad
-frame — a relay reporting on the link it forwards — not for the endpoint that
-received it.)
+A frame that fails any of these MUST be discarded, and MUST NOT be forwarded.
+What may be *said* about it depends on the role (§1.3).
+
+**A device MUST discard it silently**, and MUST NOT answer it. The `CMD` and
+`SEQ` of a frame that failed its integrity check cannot be trusted, so there is
+no opcode to answer under and no token to answer with; a reply would be a
+guess, addressed to a request that may never have been sent.
+
+**A bridge MAY answer** `[ERR][ERR_BAD_CRC]`, under the `CMD` and `SEQ` it
+read, and the reference bridge does. Its position is not the device's: a bridge
+that says nothing about a frame it refused to forward is indistinguishable from
+a device that received the frame and ignored it, so answering is what
+attributes the damage to the link the bridge can see. The same reasoning
+extends to an implementation whose only role is recovery — a bootloader —
+where silence is indistinguishable from a board that never started at all.
+
+A host MUST tolerate both outcomes: no answer, and an `[ERR][ERR_BAD_CRC]`
+whose `SEQ` it may not recognise.
 
 Only after all three checks pass is the frame *accepted*. Acceptance is what
 feeds the link-liveness clock of §5.3, whatever the opcode turns out to be.
+
+### 3.8 Maximum frame size
+
+A device MUST document the largest encoded frame it accepts, delimiter
+excluded; the value is a product constant and is recorded in Part II.
+
+The limit is a real boundary, not a guideline. A receiver accumulates encoded
+bytes into a fixed buffer, and bytes past the end of it are dropped, so an
+over-long frame arrives as a truncated one and is discarded by §3.7 —
+silently, with no error reply. A host that sends one observes nothing at all,
+which is the same thing it observes from a dead link.
+
+- A host MUST NOT send a frame longer than the device's documented limit.
+- A host MUST NOT infer the limit by experiment: a frame that was answered
+  proves only that that frame fit.
+- A device MUST accept every frame that the command groups it implements can
+  require of it. A device MUST NOT document a limit that excludes a command it
+  answers.
 
 ## 4. Requests, responses and errors
 
@@ -287,11 +438,36 @@ cannot distinguish a bare error from a truncated one.
 Error codes `0x00` to `0x0F` are the **core space**. It is defined here and
 nowhere else, and it contains exactly these codes:
 
-{{table:errors}}
+{{table:errors:no_notes}}
 
-A product MUST NOT define a new code in `0x00`-`0x0F`, and MUST NOT give an
-existing one a second meaning. These are the codes a host can interpret without
-knowing what it is talking to.
+Each has exactly one meaning, and this text is that meaning.
+
+- **`ERR_OK` (`0x00`)** — no error. It exists so that zero means the same thing
+  in the code space as it does in the status byte, and it is **never sent**: a
+  device reports success with status `0x00` and no error code at all. `[0x01]
+  [0x00]` — an error status carrying `ERR_OK` — is a malformed response, and a
+  host MUST treat it as a failure rather than as success.
+- **`ERR_BAD_LEN` (`0x01`)** — the payload was shorter than the command
+  requires. Decided before any value in it was examined.
+- **`ERR_BAD_CRC` (`0x02`)** — a frame failed its integrity check, and the
+  layer that received it is reporting that fact instead of discarding it in
+  silence. A device MUST NOT send this code; a bridge or a bootloader MAY
+  (§3.7).
+- **`ERR_BAD_ARGS` (`0x03`)** — the payload was long enough, but something in
+  it was out of range, unknown, or not writable. It is also the answer to an
+  opcode the device does not act on (§9.1).
+- **`ERR_NOT_READY` (`0x04`)** — the command is recognised and its arguments
+  are valid, but the device's current state does not permit it. The same
+  request, unchanged, may succeed later. It is the answer for a session that is
+  already open (§6.4), a mode that has not been entered, or any other
+  precondition the host has not met.
+- **`ERR_UNKNOWN` (`0x05`)** — the opcode is not recognised. Optional, and
+  interchangeable with `ERR_BAD_ARGS` for that condition; see §9.1.
+
+A product MUST NOT define a new code in `0x00`-`0x0F`, MUST NOT give an
+existing one a second meaning, and MUST NOT use one for a condition other than
+the one defined above. These are the codes a host can interpret without knowing
+what it is talking to.
 
 Note the shape of the two most common ones. `ERR_BAD_LEN` means the payload was
 too short for the command to be executed at all, decided before any value in it
@@ -300,15 +476,26 @@ it was out of range, unknown, or not writable. A device MUST NOT answer
 `ERR_BAD_ARGS` for a short payload or `ERR_BAD_LEN` for a bad value — a host
 uses the difference to tell a mis-built frame from a mis-chosen value.
 
+A command's payload length is a **minimum**, and only `LEN` is checked for
+equality (§3.2). A device MUST NOT answer `ERR_BAD_LEN` because a payload was
+*longer* than the command requires; it MUST read the bytes the command defines
+and ignore the rest. A host MUST NOT send trailing bytes expecting them to be
+read, and MUST NOT take an OK response as evidence that they were: the same
+response comes back either way, which is exactly why the excess cannot carry
+meaning.
+
 ### 4.4 The extension space
 
 Codes `0x10` and above are an **extension space**, and this standard assigns
 nothing in it. A code there means whatever the layer that sent it says it means,
 and it is interpretable only once the host knows which layer answered.
 
-This is not hypothetical. The bridge layer (§9.2) uses `0x11`-`0x15` for its SWD
-operations, `0x20`, `0x21` and `0xE1` for flash operations, and `0x30`-`0x35`
-for its own firmware update. Those meanings are the bridge's; they are
+This is not hypothetical. The bridge layer (§9.2) uses `0x11`-`0x15` for its
+SWD and core-control operations, `0x20`, `0x21` and `0xE1` for flash
+operations, and `0x30`-`0x35` for its own firmware update. The first block is
+worth naming precisely: `0x14` and `0x15` are core halt and core resume, which
+sit beside the SWD errors without being SWD errors, and reading them as
+transport faults has cost bench time. Those meanings are the bridge's; they are
 documented with the bridge in Part II, and they say nothing about what a
 different layer might assign to the same numbers. A device and a bridge on one
 link can both use `0x30` for unrelated things without conflict, because the
@@ -328,7 +515,19 @@ Rules a product MUST follow when it needs its own error codes:
 A device is always in exactly one operating mode. `CMD_SET_MODE` (§6.1) is what
 changes it.
 
-{{table:op_modes}}
+{{table:op_modes:no_notes}}
+
+The standard assigns the values and fixes what each mode is *for*. What a mode
+does inside a product — which subsystems it starts, suspends or ignores — is
+product-defined and recorded in Part II.
+
+- **`OPMODE_ISP`** — selects the product's in-system-programming path. A device
+  that implements it MAY stop acting on its ordinary inputs while in it, and
+  MAY return itself to `OPMODE_NORMAL` on its own if nothing further arrives.
+- **`OPMODE_NORMAL`** — the boot default, and the quiet one. See §5.2.
+- **`OPMODE_DEBUG`** — every command the device implements is answered.
+- **`OPMODE_TUNING`** — reserved for host-driven calibration (§6.4).
+- **`OPMODE_TEST`** — reserved for a product's own production test.
 
 A device MUST boot into `OPMODE_NORMAL`. A device MUST answer `CMD_SET_MODE`
 with `ERR_BAD_ARGS` for a mode value it does not implement, rather than ignoring
@@ -349,9 +548,8 @@ In `OPMODE_NORMAL` a device MUST process, and answer, exactly these commands:
 unimplemented alike — MUST be **silently dropped**: no response at all, not even
 an error, and no action taken.
 
-The note against `OPMODE_NORMAL` in the mode table above abbreviates that
-list; `CMD_GET_VERSION` is answered in `OPMODE_NORMAL` too, and the six
-commands named here are the normative set.
+Those six are the normative set; no other list of them anywhere is
+authoritative.
 
 This is the one place in this standard where a well-formed request goes
 unanswered, and both ends have to understand it the same way. A host that gets
@@ -360,7 +558,7 @@ device nobody has asked to leave the boot mode. `CMD_SET_MODE` is processed in
 every mode, and is the only way out.
 
 `CMD_PING`, `CMD_INFO` and `CMD_GET_VERSION` are answered in every mode by
-design: identifying a device and checking that it is alive must never require
+design: identifying a device and checking that it is alive MUST NOT require
 changing its state.
 
 ### 5.3 Link liveness
@@ -407,11 +605,27 @@ every one of them is answered in every operating mode.
 - **`CMD_GET_VERSION`** — the machine-readable identity. One opcode answers more
   than one question, through a leading selector byte, and the response echoes
   the selector so that a reply is self-describing: readable out of a log, and
-  matchable by a host that pipelined both requests. Two selectors are defined by
-  this standard, one for the **firmware build** on the device and one for the
-  **command-set version** it implements (§9.3). A device MUST answer
-  `ERR_BAD_ARGS` for a selector it does not implement, and MUST NOT answer with
-  a different selector's value.
+  matchable by a host that pipelined both requests.
+
+The request is `[sel u8]` and the response is
+`[OK][sel u8][major u8][minor u8][patch u8]`, with the selector repeated at
+`DATA[0]`. This standard defines two selectors:
+
+{{table:ver_selectors}}
+
+`VER_SEL_FW` reports the version of the firmware image that answered — a
+product identity, and not comparable across products. `VER_SEL_CMD_SET` reports
+the command-set version of §9.3, which every implementation of this standard
+carries and which is comparable across all of them. Both are the same
+`MAJOR.MINOR.PATCH` shape, and neither can be derived from the other.
+
+Selector values `0x02` and above are unassigned by this standard. A device MUST
+answer `ERR_BAD_ARGS` for a selector it does not implement, and MUST NOT answer
+with a different selector's value — a host that pipelined two requests has only
+the echoed selector to tell the replies apart. Every conforming device MUST
+implement both selectors above. Selector numbering is per opcode and is not
+shared: the bridge layer has its own version command (§9.2, Part II) with its
+own selector space, and the same selector value there means something else.
 
 A host SHOULD read the command-set version before relying on any opcode outside
 this group.
@@ -430,6 +644,15 @@ The remaining opcodes in this group are the standardised places for a product's
 own activation and heating control. A product that does not implement one MUST
 answer it per §9.1 rather than acknowledging it, and MUST NOT reuse one of these
 opcodes for an unrelated function.
+
+**A known deviation, stated rather than smoothed over.** The reference firmware
+does not meet that rule today: `CMD_ACTIVATE`, `CMD_DEACTIVATE`,
+`CMD_START_HEATING` and `CMD_STOP_HEATING` answer `[OK]` whether or not the
+product acts on them, which is why the table above marks each of them a stub.
+The rule stands and a new implementation MUST NOT copy the behaviour; the
+consequence while it lasts is that an `[OK]` from those four opcodes is not
+evidence that anything happened, and a host MUST NOT read it as such. Part II
+records which products are affected.
 
 ### 6.3 Register access
 
@@ -481,6 +704,19 @@ An optional group. A product with no host-controllable display answers it per
 Both mechanisms in this section send device-to-host frames that answer no
 request. All of them carry `SEQ = 0` (§3.5).
 
+Both groups are **optional**. A product that implements neither MUST answer
+their opcodes per §9.1; nothing else in this standard depends on them.
+
+**An unsolicited frame is shaped exactly like a response.** Answering no
+request does not change its payload: it is `[STATUS u8][DATA ...]` as §4.2
+requires, with `STATUS = 0x00`, and the frame's own content begins at
+`DATA[0]` — that is, at payload byte 1, not payload byte 0. This holds for
+every frame in this section and for the tuning report frames of §6.4. A host
+that reads the first payload byte as content is off by one on every sample it
+ever takes, and the error is silent, because a status byte of `0x00` is a
+plausible first data byte. The generated tables spell the shape out, `[OK]`
+first.
+
 ### 7.1 Text log
 
 {{table:opcodes:log}}
@@ -489,9 +725,12 @@ A pull-based handshake for free-text diagnostics, shaped so that the device's
 log output cannot flood the link:
 
 1. The host sends `CMD_LOG_START`.
-2. The device acknowledges, and only then arms logging. The acknowledgement is
-   queued ahead of anything that follows it, so the host always sees the ack
-   before any log content.
+2. The device MUST send its acknowledgement **before** it arms logging, and
+   MUST queue the acknowledgement ahead of anything that follows it, so the
+   host always sees the ack before any log content. The ordering is
+   load-bearing: a device that arms first can emit a log line while the host is
+   still waiting for its response, and the host will parse that line as the
+   response it asked for.
 3. The device sends the next log line as one `CMD_LOG_FRAME` carrying the text,
    followed by one `CMD_LOG_STOP`.
 4. The host re-issues `CMD_LOG_START` for the next line.
@@ -502,9 +741,9 @@ NUL-terminated, and MUST take the payload length as authoritative.
 
 A host MUST also tolerate a device that keeps emitting frames without a further
 `CMD_LOG_START` — the disarm step is what bounds the stream to one line, and a
-product may deliberately leave it armed for continuous telemetry. A host that
+product MAY deliberately leave it armed for continuous telemetry. A host that
 needs the stream to stop MUST have a way to disarm it: `CMD_SET_MODE` selecting
-`OPMODE_NORMAL` always does, and a product may also expose logging as a
+`OPMODE_NORMAL` always does, and a product MAY also expose logging as a
 parameter slot (§8).
 
 Text logging is for diagnostics. Anything sampled at a fixed cadence belongs in
@@ -521,21 +760,57 @@ A fixed-width binary stream for time-series measurement.
 period and a duration. The period MUST lie within
 `[BURST_PERIOD_MS_MIN, BURST_PERIOD_MS_MAX]`, and the duration, if non-zero,
 within `[BURST_DURATION_MS_MIN, BURST_DURATION_MS_MAX]`; a value outside either
-range MUST be refused with `ERR_BAD_ARGS`, not clamped. A duration of
-`BURST_DURATION_MS_INFINITE` (zero) means the session runs until the host stops
-it. All four bounds are protocol constants whose values are given in Part II.
+range MUST be refused with `ERR_BAD_ARGS`, not clamped.
 
-**The field mask** selects up to `BURST_MAX_FIELDS` signals, one bit each, from
-the standard `LOG_FIELD_*` family. Which bits a given product has wired to a
-real reading is product-defined; a device MUST accept a bit it has not wired
-without error and MUST report that field as zero, so that a host built against a
-later product does not fail against an older one.
+These are protocol constants of this standard, identical for every product, and
+this is where their values live:
 
-**Frame layout.** Each `CMD_LOG_BURST_FRAME` carries a `u32` timestamp followed
-by one `u16` per bit **set in the requested mask**, in ascending bit order —
-bit 0's value first, regardless of which bits are set. The mask is not repeated
-in the frame: the host MUST decode using the mask it sent. A device MUST NOT
-reorder the values, and MUST NOT omit one.
+{{table:burst_limits}}
+
+`BURST_DURATION_MS_INFINITE` is a reserved duration value, not a member of the
+duration range: it means *no* duration, and a session started with it runs
+until the host stops it (**Stopping**, below). It is the one duration below
+`BURST_DURATION_MS_MIN` that a device MUST accept. `BURST_MAX_FIELDS` is how
+many field bits the mask can carry, which is why the mask is a `u16`.
+
+Period and duration are both in milliseconds.
+
+**The field mask** selects signals from the standard `LOG_FIELD_*` family, one
+bit each. The bit assignments are part of this standard:
+
+{{table:log_fields:no_notes}}
+
+Each bit names a quantity, and the quantity is what the standard fixes:
+
+- `LOG_FIELD_VDD` — the device's own supply rail.
+- `LOG_FIELD_VAT` — the voltage across the driven load.
+- `LOG_FIELD_IAT` — the current through it.
+- `LOG_FIELD_PWR` — the power delivered to it.
+- `LOG_FIELD_DUTY` — the duty cycle of the drive.
+- `LOG_FIELD_PROT` — the device's protection status, as a bitfield.
+- `LOG_FIELD_RAT` — the load resistance the device computed.
+
+Every field is carried as a `u16`. Two things are product-defined and recorded
+in Part II: the **scale, unit and derivation** behind each field — a host that
+reads a value without knowing the product's scale has a number, not a
+measurement — and **which bits the product has wired** to a real reading at
+all.
+
+A device MUST accept a bit it has not wired, without error, and MUST report
+that field as zero. Bits above the highest assigned one are unassigned by this
+standard, and a device MUST treat an unassigned bit exactly as it treats an
+unwired one: accepted, reported as zero. Both rules exist so that a host built
+against a later product does not fail against an older one.
+
+**Frame layout.** Each `CMD_LOG_BURST_FRAME` payload is
+`[STATUS][tick_ms u32][field u16] ...`: the status byte of §4.2, always `0x00`;
+then a `u32` timestamp in milliseconds; then one `u16` per bit **set in the
+requested mask**, in ascending bit order — bit 0's value first, regardless of
+which bits are set. The timestamp MUST NOT decrease within a session and its
+zero point MUST NOT change during one; where that zero point sits is
+product-defined. The mask is not repeated in the frame: the host MUST decode
+using the mask it sent. A device MUST NOT reorder the values, and MUST NOT omit
+one.
 
 **Stopping.** `CMD_LOG_BURST_STOP` is dual-purpose, and this is the shape the
 tuning group reuses (§6.4):
@@ -569,6 +844,12 @@ each. The distinction is what they reach:
 - **`CMD_PAR*`** — the **parameter** map: the device's configuration and
   threshold store.
 
+This group is **optional**. A product that implements neither family MUST
+answer all twelve opcodes per §9.1. A product MAY implement one family without
+the other, and MAY implement one width without the others — but a width that is
+implemented MUST implement both its `SET` and its `GET`, since a value that can
+be written and not read back cannot be checked.
+
 Both families share one shape. `SET` takes `[id u8][value]`; `GET` takes
 `[id u8]` and answers `[OK][value]`; and the value is a `u8`, `u16` or `u32`,
 little-endian, according to the command's width. The three widths are three
@@ -582,12 +863,20 @@ Required behaviour:
 - A `SET` to a read-only slot MUST be answered `ERR_BAD_ARGS`. It MUST NOT store
   the value, and MUST NOT answer OK — a host cannot tell a silently ignored
   write from a successful one.
-- A `SET` with a value outside the slot's accepted range MUST be answered
+- Every writable slot MUST have an accepted range, declared in Part II. A slot
+  that accepts every value its width can hold is declared as accepting the full
+  width. Without a declared range there is nothing for the next rule to test.
+- A `SET` with a value outside the slot's declared range MUST be answered
   `ERR_BAD_ARGS`. A device MUST NOT mask or clamp the value into range: a host
   asking for something impossible has a bug, and a clamp hands it
   plausible-looking readings instead of the error that would surface it.
-- A writable slot MUST be backed by real storage that the device reads back. A
-  slot that reads through to state it does not own MUST reject `SET`.
+- A `GET` of a slot, issued after a successful `SET` of that same slot, MUST
+  return the value that was set, unless the device itself has changed it in the
+  meantime. This is the observable form of the rule, and it is the only form a
+  host can check: where the value is kept is the device's business, but a write
+  that cannot be read back is indistinguishable from a write that was
+  discarded. A slot that cannot meet this MUST reject `SET` with
+  `ERR_BAD_ARGS` and MUST be declared read-only.
 
 ### 8.1 The identifier maps are product-defined, and this is load-bearing
 
@@ -672,19 +961,43 @@ build number, and it moves independently of one.
   what it did.
 - **PATCH** is for changes with no effect on the wire.
 
-Every implementation on a link — device firmware, bridge firmware, host tool —
-reports the same command-set version, and a difference between any two of them
-is a mispaired system, not a tolerable skew. A host SHOULD read it
-(`CMD_GET_VERSION` with the command-set selector, §6.1) before relying on any
-opcode outside §6.1, and SHOULD refuse to proceed on a MAJOR mismatch.
+Two different rules use this number, and conflating them is how a real system
+gets refused for a difference that was never a fault.
 
-Where a version number is duplicated — and it always is, across firmwares and
-host tools in more than one repository — every copy has to be counted and moved
-together. Part II lists the copies for the products it covers.
+**Release bookkeeping — a property of a build.** Within one release of one
+implementation, every copy of the command-set version constant MUST carry the
+same value, and every copy MUST move together when it changes. The number is
+duplicated across firmwares and host tools in more than one repository, so the
+copies have to be counted rather than assumed; Part II lists them for the
+products it covers. A release that ships two different values for its own
+command-set version is mis-built. Nothing about this rule is observable on the
+wire.
+
+**Wire compatibility — a property of a link.** Two implementations on one link
+MAY report different command-set versions, and a difference is not by itself a
+fault. A device reporting an older version is stating truthfully which opcode
+table it was built against, which is the fact worth having. A host:
+
+- SHOULD read the far end's version (`CMD_GET_VERSION` with `VER_SEL_CMD_SET`,
+  §6.1) before relying on any opcode outside §6.1;
+- SHOULD refuse to proceed on a MAJOR difference, because an opcode may have
+  changed number or meaning underneath it and the answers will look plausible;
+- MAY proceed on a MINOR or PATCH difference, and SHOULD then confine itself to
+  the opcodes defined by the lower of the two versions. MINOR is additive by
+  definition, so the older end has fewer commands, not different ones.
 
 ## 10. Conformance checklist
 
-A conforming **device** answers yes to all of these.
+A conforming **device** answers yes to every item below that applies to it.
+
+**When an item does not apply.** Five command groups are optional: register
+access (§6.3), tuning (§6.4), display (§6.5), streaming (§7) and variables and
+parameters (§8). An item that tests a group the device does not implement is
+answered **N/A**, and a device with N/A items is still conforming — provided
+item 25 holds for that group's opcodes, which is what makes "not implemented"
+something a host can observe rather than something it has to be told. No item
+under Transport and framing, Requests and responses, Modes, or items 22, 23,
+24, 26 and 27 is ever N/A: those are required of every device.
 
 **Transport and framing**
 
@@ -693,65 +1006,76 @@ A conforming **device** answers yes to all of these.
 | 1 | The serial link is 8 data bits, no parity, one stop bit, no flow control, at the agreed rate. | 2 |
 | 2 | No inter-frame gap, break or preamble is required of the host, and back-to-back frames are accepted. | 2 |
 | 3 | Every frame is COBS-encoded with a trailing `0x00` delimiter, and `0x00` is treated as an unconditional frame boundary on receive. | 3.4 |
-| 4 | `LEN` counts `CMD` + `SEQ` + payload + CRC, and is checked for equality against the decoded length. | 3.2 |
-| 5 | The CRC is CRC-16/CCITT-FALSE and reproduces `0x29B1` over `"123456789"`. | 3.3 |
-| 6 | The CRC covers the decoded frame from the first `LEN` byte through the last payload byte, and excludes the CRC bytes themselves. | 3.3 |
-| 7 | A frame failing COBS decode, the CRC check or the `LEN` check is discarded silently, with no response. | 3.7 |
+| 4 | On encode, every complete 254-byte zero-free run is emitted with a `0xFF` code, no `0x00` is introduced where none stood, and the final group carries a code byte even when it has no data. | 3.4.1 |
+| 5 | On decode, a `0x00` is restored after every group whose code was not `0xFF`, and after no other group — including the last one in the frame. | 3.4.2 |
+| 6 | `LEN` counts `CMD` + `SEQ` + payload + CRC, and is checked for equality against the decoded length. | 3.2 |
+| 7 | The CRC is CRC-16/CCITT-FALSE and reproduces `0x29B1` over `"123456789"`. | 3.3 |
+| 8 | The CRC covers the decoded frame from the first `LEN` byte through the last payload byte, and excludes the CRC bytes themselves. | 3.3 |
+| 9 | A frame failing COBS decode, the CRC check or the `LEN` check is discarded silently, with no response. | 3.7 |
+| 10 | The largest accepted encoded frame is documented, and a longer one is discarded silently like any other frame that cannot be validated. | 3.8 |
 
 **Requests and responses**
 
 | Item | Requirement | See |
 |---|---|---|
-| 8 | Each processed request produces exactly one response, echoing its `CMD` and its `SEQ`. | 4.1 |
-| 9 | Unsolicited frames carry `SEQ = 0`. | 3.5 |
-| 10 | `SEQ` is never interpreted or validated by the device. | 3.5 |
-| 11 | Every response payload begins with a status byte, and an error response carries an error code in `DATA[0]`. | 4.2 |
-| 12 | Core error codes are used only for core conditions, and any product-specific code is at `0x10` or above. | 4.3, 4.4 |
-| 13 | `ERR_BAD_LEN` is used for a short payload and `ERR_BAD_ARGS` for a bad value, never interchangeably. | 4.3 |
+| 11 | Each processed request produces exactly one response, echoing its `CMD` and its `SEQ`. | 4.1 |
+| 12 | Unsolicited frames carry `SEQ = 0`. | 3.5 |
+| 13 | `SEQ` is never interpreted or validated by the device. | 3.5 |
+| 14 | Every response payload begins with a status byte, and an error response carries an error code in `DATA[0]`. | 4.2 |
+| 15 | Each core error code is used only for the condition §4.3 defines for it, and any product-specific code is at `0x10` or above. | 4.3, 4.4 |
+| 16 | `ERR_BAD_LEN` is used for a short payload and `ERR_BAD_ARGS` for a bad value, never interchangeably. | 4.3 |
+| 17 | A payload longer than the command requires is accepted and its excess ignored, never answered `ERR_BAD_LEN`. | 4.3 |
 
 **Modes**
 
 | Item | Requirement | See |
 |---|---|---|
-| 14 | The device boots into `OPMODE_NORMAL`. | 5.1 |
-| 15 | `CMD_SET_MODE` is processed in every mode, and an unimplemented mode value is refused with `ERR_BAD_ARGS`. | 5.1 |
-| 16 | In `OPMODE_NORMAL`, `CMD_PING`, `CMD_INFO`, `CMD_GET_VERSION`, `CMD_SET_MODE`, `CMD_DBG_ONLINE` and `CMD_RESET` are answered, and everything else is dropped silently. | 5.2 |
-| 17 | Any non-default mode reverts to `OPMODE_NORMAL` after `ONLINE_TIMEOUT_MS` with no accepted frame, unconditionally. | 5.3 |
+| 18 | The device boots into `OPMODE_NORMAL`. | 5.1 |
+| 19 | `CMD_SET_MODE` is processed in every mode, and an unimplemented mode value is refused with `ERR_BAD_ARGS`. | 5.1 |
+| 20 | In `OPMODE_NORMAL`, `CMD_PING`, `CMD_INFO`, `CMD_GET_VERSION`, `CMD_SET_MODE`, `CMD_DBG_ONLINE` and `CMD_RESET` are answered, and everything else is dropped silently. | 5.2 |
+| 21 | Any non-default mode reverts to `OPMODE_NORMAL` after `ONLINE_TIMEOUT_MS` with no accepted frame, unconditionally. | 5.3 |
 
 **Commands**
 
 | Item | Requirement | See |
 |---|---|---|
-| 18 | Every command in §6.1 is implemented, and answered in every mode. | 6.1 |
-| 19 | `CMD_GET_VERSION` echoes its selector, answers `ERR_BAD_ARGS` for a selector it does not implement, and reports the version of §9.3 under the command-set selector. | 6.1 |
-| 20 | `CMD_RESET` responds before resetting. | 6.2 |
-| 21 | Every opcode the device does not act on is answered `[ERR][ERR_BAD_ARGS]` outside `OPMODE_NORMAL`. | 9.1 |
-| 22 | No command is defined at `0xC0` or above. | 9.2 |
+| 22 | Every command in §6.1 is implemented, and answered in every mode. | 6.1 |
+| 23 | `CMD_GET_VERSION` implements both `VER_SEL_FW` and `VER_SEL_CMD_SET`, echoes the selector it was given, answers `ERR_BAD_ARGS` for any other, and reports the version of §9.3 under `VER_SEL_CMD_SET`. | 6.1, 9.3 |
+| 24 | `CMD_RESET` responds before resetting. | 6.2 |
+| 25 | Outside `OPMODE_NORMAL`, every opcode the device does not act on is answered `[ERR][ERR_BAD_ARGS]`, or `[ERR][ERR_UNKNOWN]` where the device can tell an unrecognised opcode from a bad argument. | 9.1 |
+| 26 | No command is defined at `0xC0` or above. | 9.2 |
+| 27 | Every copy of the command-set version constant in the release carries the same value. | 9.3 |
 
-**Streaming**
-
-| Item | Requirement | See |
-|---|---|---|
-| 23 | Log frames and telemetry frames are emitted with `SEQ = 0`. | 7 |
-| 24 | A burst period or duration outside its permitted range is refused with `ERR_BAD_ARGS`, not clamped. | 7.2 |
-| 25 | A burst frame carries one `u16` per set mask bit, in ascending bit order, and an unwired bit reports zero rather than erroring. | 7.2 |
-| 26 | A stop or end command is idempotent, echoes the request's `SEQ` when host-initiated, and is also emitted unsolicited with `SEQ = 0` when the device ends the session itself. | 6.4, 7.2 |
-| 27 | Command dispatch keeps working while a streaming session is active. | 7.2 |
-
-**Variables and parameters**
+**Streaming** — N/A for a device that implements neither §7.1 nor §7.2.
 
 | Item | Requirement | See |
 |---|---|---|
-| 28 | An out-of-range identifier is refused with `ERR_BAD_ARGS`. | 8 |
-| 29 | A write to a read-only slot is refused with `ERR_BAD_ARGS` and stores nothing. | 8 |
-| 30 | An out-of-range value is refused, never clamped or masked. | 8 |
-| 31 | Slot numbering is append-only, and any renumbering is accompanied by a MAJOR command-set version change. | 8.1, 9.3 |
+| 28 | Log frames and telemetry frames are emitted with `SEQ = 0`. | 7 |
+| 29 | An unsolicited frame's payload begins with the status byte, and the frame's own content begins at `DATA[0]`. | 7, 4.2 |
+| 30 | `CMD_LOG_START` is acknowledged before logging is armed, and the acknowledgement is queued ahead of any log content. | 7.1 |
+| 31 | A burst period or duration outside its permitted range is refused with `ERR_BAD_ARGS`, not clamped, and `BURST_DURATION_MS_INFINITE` is accepted. | 7.2 |
+| 32 | A burst frame carries one `u16` per set mask bit, in ascending bit order, and an unwired or unassigned bit reports zero rather than erroring. | 7.2 |
+| 33 | A stop or end command is idempotent, echoes the request's `SEQ` when host-initiated, and is also emitted unsolicited with `SEQ = 0` when the device ends the session itself. | 6.4, 7.2 |
+| 34 | Command dispatch keeps working while a streaming session is active. | 7.2 |
+
+**Variables and parameters** — N/A for a device that implements neither family.
+
+| Item | Requirement | See |
+|---|---|---|
+| 35 | An out-of-range identifier is refused with `ERR_BAD_ARGS`. | 8 |
+| 36 | A write to a read-only slot is refused with `ERR_BAD_ARGS` and stores nothing. | 8 |
+| 37 | Every writable slot has a declared accepted range, and a value outside it is refused with `ERR_BAD_ARGS`, never clamped or masked. | 8 |
+| 38 | A `GET` after a successful `SET` of the same slot returns the value that was set. | 8 |
+| 39 | Slot numbering is append-only, and any renumbering is accompanied by a MAJOR command-set version change. | 8.1, 9.3 |
 
 A conforming **host** additionally answers yes to these.
 
 | Item | Requirement | See |
 |---|---|---|
-| 32 | It matches responses by `SEQ`, and does not assume request ordering. | 3.5 |
-| 33 | It tolerates an unsolicited frame arriving at any time, including between its own request and the matching response. | 2, 7 |
-| 34 | It tolerates an unrecognised status byte without losing frame synchronisation. | 4.2 |
-| 35 | It reads the device's identity and command-set version before using any identifier map, and uses that product's own map. | 8.1 |
+| 40 | It matches responses by `SEQ`, and does not assume request ordering. | 3.5 |
+| 41 | It tolerates an unsolicited frame arriving at any time, including between its own request and the matching response. | 2, 7 |
+| 42 | It tolerates an unrecognised status byte without losing frame synchronisation. | 4.2 |
+| 43 | It reads an unsolicited frame's first payload byte as the status byte, and takes the frame's content from `DATA[0]`. | 7 |
+| 44 | For a frame that arrived corrupt it tolerates both answers: silence from a device, and `[ERR][ERR_BAD_CRC]` from a bridge or a bootloader. | 3.7 |
+| 45 | It does not send a frame larger than the device's documented maximum, and does not establish that maximum by experiment. | 3.8 |
+| 46 | It reads the device's identity and command-set version before using any identifier map, and uses that product's own map. | 8.1 |

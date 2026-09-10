@@ -21,6 +21,15 @@ Version = tuple[int, int, int]
 # ones the ECIG repo's own tests cannot hold; CFS-SUITE-BRIDGE's test holds
 # those three plus its own two, but not the ECIG one. Neither product-repo
 # test sees all eight at once -- this build does.
+#
+# A ninth site declares the same macros: CFS-SUITE-BRIDGE's
+# fw_dut/ref_cwm2032_working_uart_swd_together/Project/Inc/app_proto_defs.h.
+# It is deliberately NOT listed here -- that tree is a frozen reference
+# snapshot kept for comparison, not a product, and requiring it to agree
+# would break the build the first time someone bumps a real copy and
+# correctly leaves the reference alone. See
+# tests/test_extract_version.py::test_no_undeclared_copy_appeared, which
+# greps all three product repos and fails if an undeclared site appears.
 _C_HEADERS = [
     ("CFS-ECIG-SUITE/FW", "App/Inc/app_proto.h"),
     ("CFS-SUITE-BRIDGE", "fw/brd01/App/Inc/app_version.h"),

@@ -3,7 +3,7 @@ import re
 import pypdf
 import pytest
 
-from tools import build
+from tools import build, render
 
 
 @pytest.fixture(scope="module")
@@ -94,20 +94,38 @@ def test_no_product_threshold_leaks_into_print_html(public_build):
             )
 
 
-def test_par16_defaults_render_only_in_internal_build(public_build, internal_build):
+def test_no_page_ever_shows_a_default_in_the_public_edition(public_build):
+    """No shipped public page may carry a Default column, whatever tables the
+    prose happens to place. This is the whole-document half of the check;
+    the mechanism itself is exercised directly below."""
+    for lang in ("en", "ko", "zh"):
+        assert "Default" not in public_build["site"][lang].read_text(encoding="utf-8")
+
+
+def test_par16_defaults_render_only_in_internal_build():
     """Exercises the actual mechanism this whole gate exists to protect:
     render.py's `internal = any("default" in r for r in rows_src)`, which
-    decides whether the Default column is emitted at all. Before the
-    {{table:par:par16}} stub was added to spec/*.md, no table rendered in
-    the whole suite ever carried a default, so a regression in that one
-    line -- e.g. always showing the Default column, or never showing it --
-    would have gone undetected by every other test here."""
-    for lang in ("en", "ko", "zh"):
-        pub_html = public_build["site"][lang].read_text(encoding="utf-8")
-        int_html = internal_build["site"][lang].read_text(encoding="utf-8")
-        assert "Default" not in pub_html
-        assert "Default" in int_html
-        # LONG_PUFF_TH's real default (par16 id 6) -- must actually appear
-        # as a value, not just the column header.
-        assert "10000" in int_html
-        assert "10000" not in pub_html
+    decides whether the Default column is emitted at all. A regression in
+    that one line -- always showing the Default column, or never showing
+    it -- would go undetected by every other test here.
+
+    Driven from a placeholder this test writes itself rather than from
+    whichever placeholders the shipped spec/*.md happen to contain. It used
+    to read the built pages, which silently made a stub in every language
+    file load-bearing: Part I of the standard defines the var/par *commands*
+    and states that the id maps are product-defined, so it carries no par
+    table at all, and writing it correctly turned this test red. A coverage
+    check that depends on the prose keeping a particular table is testing
+    the prose, not render.py."""
+    from tools.extract import varpar
+
+    ph = "{{table:par:par16}}"
+    pub = render.expand_tables(ph, {"varpar": varpar.extract(internal=False)})
+    int_ = render.expand_tables(ph, {"varpar": varpar.extract(internal=True)})
+
+    assert "Default" not in pub
+    assert "Default" in int_
+    # LONG_PUFF_TH's real default (par16 id 6) -- must actually appear as a
+    # value, not just the column header.
+    assert "10000" in int_
+    assert "10000" not in pub

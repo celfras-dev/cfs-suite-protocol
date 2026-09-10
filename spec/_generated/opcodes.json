@@ -1,0 +1,383 @@
+{
+  "commands": [
+    {
+      "id": 1,
+      "name": "CMD_PING",
+      "req": "[]",
+      "resp": "[OK][\"PONG\"]",
+      "note": "",
+      "group": "core"
+    },
+    {
+      "id": 2,
+      "name": "CMD_INFO",
+      "req": "[]",
+      "resp": "[OK][id string, contains \"CFS\"]",
+      "note": "",
+      "group": "core"
+    },
+    {
+      "id": 3,
+      "name": "CMD_SET_MODE",
+      "req": "[op_mode u8]",
+      "resp": "[OK] or [ERR][ERR_BAD_ARGS]",
+      "note": "",
+      "group": "core"
+    },
+    {
+      "id": 4,
+      "name": "CMD_DBG_ONLINE",
+      "req": "[]",
+      "resp": "[OK]",
+      "note": "liveness ping, processed in any op_mode",
+      "group": "core"
+    },
+    {
+      "id": 5,
+      "name": "CMD_GET_VERSION",
+      "req": "[sel u8]",
+      "resp": "[OK][sel][major][minor][patch]",
+      "note": "",
+      "group": "core"
+    },
+    {
+      "id": 16,
+      "name": "CMD_RESET",
+      "req": "[]",
+      "resp": "[OK][\"SYSTEM RESET\"], then NVIC_SystemReset()",
+      "note": "",
+      "group": "device"
+    },
+    {
+      "id": 17,
+      "name": "CMD_ACTIVATE",
+      "req": "[]",
+      "resp": "[OK]  (stub)",
+      "note": "",
+      "group": "device"
+    },
+    {
+      "id": 18,
+      "name": "CMD_DEACTIVATE",
+      "req": "[]",
+      "resp": "[OK]  (stub)",
+      "note": "",
+      "group": "device"
+    },
+    {
+      "id": 19,
+      "name": "CMD_START_HEATING",
+      "req": "[]",
+      "resp": "[OK][3 bytes]  (stub)",
+      "note": "",
+      "group": "device"
+    },
+    {
+      "id": 20,
+      "name": "CMD_STOP_HEATING",
+      "req": "[]",
+      "resp": "[OK][3 bytes]  (stub)",
+      "note": "",
+      "group": "device"
+    },
+    {
+      "id": 32,
+      "name": "CMD_REG_WRITE8",
+      "req": "[reg_addr u8][reg_data u8]",
+      "resp": "[OK][resp_data u8]",
+      "note": "",
+      "group": "register"
+    },
+    {
+      "id": 33,
+      "name": "CMD_REG_READ8",
+      "req": "[reg_addr u8]",
+      "resp": "[OK][resp_data u8]",
+      "note": "",
+      "group": "register"
+    },
+    {
+      "id": 34,
+      "name": "CMD_REG_WRITE16",
+      "req": "[reg_addr u8][reg_data u16]",
+      "resp": "[OK][resp_data u16]",
+      "note": "",
+      "group": "register"
+    },
+    {
+      "id": 35,
+      "name": "CMD_REG_READ16",
+      "req": "[reg_addr u8]",
+      "resp": "[OK][resp_data u16]",
+      "note": "",
+      "group": "register"
+    },
+    {
+      "id": 36,
+      "name": "CMD_REG_BURST_READ16",
+      "req": "[reg_addr u8]",
+      "resp": "[OK][resp_data u16]",
+      "note": "",
+      "group": "register"
+    },
+    {
+      "id": 48,
+      "name": "CMD_LOG_FRAME",
+      "req": "",
+      "resp": "[OK][text bytes]",
+      "note": "(fw->host only)",
+      "group": "log"
+    },
+    {
+      "id": 49,
+      "name": "CMD_LOG_START",
+      "req": "[]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "log"
+    },
+    {
+      "id": 50,
+      "name": "CMD_LOG_STOP",
+      "req": "[] (host) or (fw->host, unsolicited)",
+      "resp": "[OK]",
+      "note": "",
+      "group": "log"
+    },
+    {
+      "id": 64,
+      "name": "CMD_LOG_BURST_START",
+      "req": "[fields_mask u16][period_ms u16][duration_ms u32]",
+      "resp": "[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]",
+      "note": "",
+      "group": "burst"
+    },
+    {
+      "id": 65,
+      "name": "CMD_LOG_BURST_FRAME",
+      "req": "",
+      "resp": "[OK][tick_ms u32][field u16]... (one u16 per set bit in fields_mask, LSB first)",
+      "note": "(fw->host only, seq=0)",
+      "group": "burst"
+    },
+    {
+      "id": 66,
+      "name": "CMD_LOG_BURST_STOP",
+      "req": "[]",
+      "resp": "[OK][total_frame_cnt u16]",
+      "note": "host-initiated (echoes req seq) or fw-initiated on duration timeout (seq=0)",
+      "group": "burst"
+    },
+    {
+      "id": 80,
+      "name": "CMD_VAR8_SET",
+      "req": "[var_id u8][value u8]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 81,
+      "name": "CMD_VAR8_GET",
+      "req": "[var_id u8]",
+      "resp": "[OK][value u8]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 82,
+      "name": "CMD_VAR16_SET",
+      "req": "[var_id u8][value u16 LE]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 83,
+      "name": "CMD_VAR16_GET",
+      "req": "[var_id u8]",
+      "resp": "[OK][value u16 LE]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 84,
+      "name": "CMD_VAR32_SET",
+      "req": "[var_id u8][value u32 LE]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 85,
+      "name": "CMD_VAR32_GET",
+      "req": "[var_id u8]",
+      "resp": "[OK][value u32 LE]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 86,
+      "name": "CMD_PAR8_SET",
+      "req": "[par_id u8][value u8]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 87,
+      "name": "CMD_PAR8_GET",
+      "req": "[par_id u8]",
+      "resp": "[OK][value u8]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 88,
+      "name": "CMD_PAR16_SET",
+      "req": "[par_id u8][value u16 LE]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 89,
+      "name": "CMD_PAR16_GET",
+      "req": "[par_id u8]",
+      "resp": "[OK][value u16 LE]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 90,
+      "name": "CMD_PAR32_SET",
+      "req": "[par_id u8][value u32 LE]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 91,
+      "name": "CMD_PAR32_GET",
+      "req": "[par_id u8]",
+      "resp": "[OK][value u32 LE]",
+      "note": "",
+      "group": "var_par"
+    },
+    {
+      "id": 96,
+      "name": "CMD_DISP_ON",
+      "req": "[]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "display"
+    },
+    {
+      "id": 97,
+      "name": "CMD_DISP_OFF",
+      "req": "[]",
+      "resp": "[OK]",
+      "note": "",
+      "group": "display"
+    },
+    {
+      "id": 112,
+      "name": "CMD_TUNING_START",
+      "req": "[tuning_id u8][duration_ms u32][log_fields_mask u16][report_period_ms u16]",
+      "resp": "[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]",
+      "note": "",
+      "group": "tuning"
+    },
+    {
+      "id": 113,
+      "name": "CMD_TUNING_REPORT_FRAME",
+      "req": "",
+      "resp": "[OK][tick_ms u32][field u16]... (one u16 per set bit in log_fields_mask, LSB first)",
+      "note": "(fw->host only, seq=0) same shape family as CMD_LOG_BURST_FRAME",
+      "group": "tuning"
+    },
+    {
+      "id": 114,
+      "name": "CMD_TUNING_END",
+      "req": "[]",
+      "resp": "[OK]",
+      "note": "host-initiated (echoes req seq) or fw-initiated on duration timeout (seq=0), same idempotent shape as CMD_LOG_BURST_STOP",
+      "group": "tuning"
+    },
+    {
+      "id": 115,
+      "name": "CMD_SET_TUNING_PAR",
+      "req": "[tuning_id u8][coil_idx u8][heating_mode u8][heater_type u8][step u8][value u16 LE]",
+      "resp": "[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]",
+      "note": "no session required",
+      "group": "tuning"
+    },
+    {
+      "id": 116,
+      "name": "CMD_GET_TUNING_PAR",
+      "req": "[tuning_id u8][coil_idx u8][heating_mode u8][heater_type u8][step u8]",
+      "resp": "[OK][value u16 LE] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]",
+      "note": "no session required",
+      "group": "tuning"
+    }
+  ],
+  "errors": [
+    {
+      "code": 0,
+      "name": "ERR_OK",
+      "note": ""
+    },
+    {
+      "code": 1,
+      "name": "ERR_BAD_LEN",
+      "note": "payload shorter than the command requires"
+    },
+    {
+      "code": 2,
+      "name": "ERR_BAD_CRC",
+      "note": ""
+    },
+    {
+      "code": 3,
+      "name": "ERR_BAD_ARGS",
+      "note": "payload present but value(s) out of range/invalid"
+    },
+    {
+      "code": 4,
+      "name": "ERR_NOT_READY",
+      "note": ""
+    },
+    {
+      "code": 5,
+      "name": "ERR_UNKNOWN",
+      "note": "command not recognized (unused while OPMODE_NORMAL silently drops instead, see CMD_SET_MODE below)"
+    }
+  ],
+  "op_modes": [
+    {
+      "value": 0,
+      "name": "OPMODE_ISP",
+      "note": "forces ST_ISP_MODE (drv_isp_init() + 10s event-ignore, then reset if untouched)"
+    },
+    {
+      "value": 1,
+      "name": "OPMODE_NORMAL",
+      "note": "default at boot: only CMD_PING/INFO/SET_MODE/DBG_ONLINE/RESET processed"
+    },
+    {
+      "value": 2,
+      "name": "OPMODE_DEBUG",
+      "note": "all commands active"
+    },
+    {
+      "value": 3,
+      "name": "OPMODE_TUNING",
+      "note": "reserved, not implemented yet: CMD_SET_MODE acks OK, no state change"
+    },
+    {
+      "value": 4,
+      "name": "OPMODE_TEST",
+      "note": "reserved, TBD: CMD_SET_MODE acks OK, no state change"
+    }
+  ]
+}

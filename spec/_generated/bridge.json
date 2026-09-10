@@ -1,0 +1,234 @@
+{
+  "commands": [
+    {
+      "id": 192,
+      "name": "CMD_B_PING",
+      "note": ""
+    },
+    {
+      "id": 193,
+      "name": "CMD_B_INFO",
+      "note": ""
+    },
+    {
+      "id": 194,
+      "name": "CMD_B_GET_CAPS",
+      "note": "reserved in fw v2.0.0, no handler yet"
+    },
+    {
+      "id": 195,
+      "name": "CMD_B_GET_STATS",
+      "note": ""
+    },
+    {
+      "id": 196,
+      "name": "CMD_B_GET_SNAPSHOT",
+      "note": ""
+    },
+    {
+      "id": 197,
+      "name": "CMD_SET_SWD_SPEED",
+      "note": ""
+    },
+    {
+      "id": 198,
+      "name": "CMD_SET_TARGET",
+      "note": ""
+    },
+    {
+      "id": 199,
+      "name": "CMD_B_GET_VERSION",
+      "note": ""
+    },
+    {
+      "id": 200,
+      "name": "CMD_MODE_DEBUG",
+      "note": ""
+    },
+    {
+      "id": 201,
+      "name": "CMD_MODE_DOWNLOAD",
+      "note": ""
+    },
+    {
+      "id": 202,
+      "name": "CMD_MODE_RAW",
+      "note": "reserved, no handler"
+    },
+    {
+      "id": 203,
+      "name": "CMD_MODE_BRIDGE_RESET",
+      "note": ""
+    },
+    {
+      "id": 204,
+      "name": "CMD_TGT_NRST",
+      "note": "req [assert u8]: 1 pulls reset low, 0 releases"
+    },
+    {
+      "id": 205,
+      "name": "CMD_TGT_POWER",
+      "note": "req [on u8] or []  resp [OK][on u8]"
+    },
+    {
+      "id": 206,
+      "name": "CMD_BRIDGE_CONF",
+      "note": ""
+    },
+    {
+      "id": 208,
+      "name": "CMD_SWD_CONNECT",
+      "note": ""
+    },
+    {
+      "id": 209,
+      "name": "CMD_SWD_DISCONNECT",
+      "note": "reserved, no handler"
+    },
+    {
+      "id": 210,
+      "name": "CMD_SWD_LINE_RESET",
+      "note": ""
+    },
+    {
+      "id": 211,
+      "name": "CMD_SWD_JTAG2SWD",
+      "note": ""
+    },
+    {
+      "id": 212,
+      "name": "CMD_SWD_READ_IDCODE",
+      "note": ""
+    },
+    {
+      "id": 215,
+      "name": "CMD_SWD_CONNECT_UNDER_RESET",
+      "note": ""
+    },
+    {
+      "id": 216,
+      "name": "CMD_DP_READ",
+      "note": ""
+    },
+    {
+      "id": 217,
+      "name": "CMD_DP_WRITE",
+      "note": ""
+    },
+    {
+      "id": 218,
+      "name": "CMD_AP_READ",
+      "note": ""
+    },
+    {
+      "id": 219,
+      "name": "CMD_AP_WRITE",
+      "note": ""
+    },
+    {
+      "id": 224,
+      "name": "CMD_CORE_HALT",
+      "note": ""
+    },
+    {
+      "id": 225,
+      "name": "CMD_CORE_RESUME",
+      "note": ""
+    },
+    {
+      "id": 226,
+      "name": "CMD_CORE_STATUS",
+      "note": ""
+    },
+    {
+      "id": 227,
+      "name": "CMD_CORE_SYSRESET",
+      "note": ""
+    },
+    {
+      "id": 228,
+      "name": "CMD_CORE_RUN_DETACH",
+      "note": ""
+    },
+    {
+      "id": 232,
+      "name": "CMD_UPD_BEGIN",
+      "note": "req [hdr 512B]           resp [OK][chunk_max u16][capacity u32]"
+    },
+    {
+      "id": 233,
+      "name": "CMD_UPD_DATA",
+      "note": "req [off u32][data<=256] resp [OK][next_off u32]"
+    },
+    {
+      "id": 234,
+      "name": "CMD_UPD_END",
+      "note": "req []                   resp [OK]"
+    },
+    {
+      "id": 235,
+      "name": "CMD_UPD_STATUS",
+      "note": "req []                   resp [OK][18 B, see bootloader.UpdateStatus]"
+    },
+    {
+      "id": 236,
+      "name": "CMD_UPD_ABORT",
+      "note": "req []                   resp [OK]"
+    },
+    {
+      "id": 237,
+      "name": "CMD_UPD_APPLY",
+      "note": "req []                   resp [OK], then the board copies and resets"
+    },
+    {
+      "id": 240,
+      "name": "CMD_FLASH_ERASE_4K",
+      "note": ""
+    },
+    {
+      "id": 241,
+      "name": "CMD_FLASH_PROG_PAGE_128",
+      "note": ""
+    },
+    {
+      "id": 242,
+      "name": "CMD_FLASH_PROG_PAGE_128_VERIFY",
+      "note": ""
+    },
+    {
+      "id": 243,
+      "name": "CMD_FLASH_READ",
+      "note": ""
+    },
+    {
+      "id": 244,
+      "name": "CMD_FLASH_MASS_ERASE",
+      "note": "reserved, no handler -- see OB_RDP_LEVEL_1"
+    },
+    {
+      "id": 245,
+      "name": "CMD_FLASH_READ_EX",
+      "note": "req [addr u32][len u8<=128] resp [OK][len B]"
+    },
+    {
+      "id": 248,
+      "name": "CMD_OB_READ",
+      "note": ""
+    },
+    {
+      "id": 249,
+      "name": "CMD_OB_WRITE",
+      "note": ""
+    },
+    {
+      "id": 250,
+      "name": "CMD_OB_LAUNCH",
+      "note": ""
+    },
+    {
+      "id": 251,
+      "name": "CMD_OB_WRITE_AND_LAUNCH",
+      "note": ""
+    }
+  ]
+}

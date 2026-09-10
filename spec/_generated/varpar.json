@@ -1,0 +1,256 @@
+{
+  "var": {
+    "var8": [
+      {
+        "id": 0,
+        "name": "EXT_CTRL_STATUS",
+        "unit": "EXT_CTRL_* bits"
+      },
+      {
+        "id": 1,
+        "name": "EXT_HEATING_PWM_DUTY",
+        "unit": "%"
+      },
+      {
+        "id": 2,
+        "name": "OP_MODE",
+        "unit": "OPMODE_*"
+      },
+      {
+        "id": 3,
+        "name": "STATE",
+        "unit": "STATE_E"
+      },
+      {
+        "id": 4,
+        "name": "OIL_MODE",
+        "unit": "heating profile idx"
+      },
+      {
+        "id": 5,
+        "name": "COIL_SEL",
+        "unit": "H_COIL*_MASK"
+      },
+      {
+        "id": 6,
+        "name": "EVENT_FLAG",
+        "unit": "EVENT_MASK_*"
+      },
+      {
+        "id": 7,
+        "name": "EVENT_TOGGLE_FLAG",
+        "unit": "EVENT_MASK_*"
+      },
+      {
+        "id": 8,
+        "name": "BATTERY_GUAGE",
+        "unit": "%"
+      },
+      {
+        "id": 9,
+        "name": "OIL_GUAGE",
+        "unit": "%"
+      },
+      {
+        "id": 10,
+        "name": "EVENT_EMUL_MASK",
+        "unit": "EVENT_MASK_*"
+      },
+      {
+        "id": 11,
+        "name": "EVENT_EMUL_ENABLE",
+        "unit": "0/1"
+      }
+    ],
+    "var16": [
+      {
+        "id": 0,
+        "name": "EXT_HEATING_POWER",
+        "unit": "mW (CP) / mV target_vatrms (CV)"
+      },
+      {
+        "id": 1,
+        "name": "PROT_TYPE",
+        "unit": "PROTECT_MASK_*"
+      },
+      {
+        "id": 2,
+        "name": "CHARGING_TIME",
+        "unit": "min"
+      },
+      {
+        "id": 3,
+        "name": "VAT",
+        "unit": "mV"
+      },
+      {
+        "id": 4,
+        "name": "IAT0",
+        "unit": "mA"
+      },
+      {
+        "id": 5,
+        "name": "PAT0",
+        "unit": "mW"
+      },
+      {
+        "id": 6,
+        "name": "RAT0",
+        "unit": "mohm"
+      },
+      {
+        "id": 7,
+        "name": "DUTY0",
+        "unit": "%"
+      }
+    ],
+    "var32": [
+      {
+        "id": 0,
+        "name": "STATE_TIME",
+        "unit": "ms"
+      },
+      {
+        "id": 1,
+        "name": "DISP_TIME",
+        "unit": "ms"
+      },
+      {
+        "id": 2,
+        "name": "ONLINE_ELAPSED",
+        "unit": "ms"
+      },
+      {
+        "id": 3,
+        "name": "HEATING_TIME",
+        "unit": "ms"
+      },
+      {
+        "id": 4,
+        "name": "LED_DAISY_STARTED",
+        "unit": "bursts"
+      },
+      {
+        "id": 5,
+        "name": "LED_DAISY_DONE",
+        "unit": "bursts"
+      }
+    ]
+  },
+  "par": {
+    "par8": [
+      {
+        "id": 0,
+        "name": "LOG_ENABLE",
+        "unit": "0/1",
+        "access": "rw"
+      }
+    ],
+    "par16": [
+      {
+        "id": 0,
+        "name": "VDD",
+        "unit": "mV",
+        "access": "ro"
+      },
+      {
+        "id": 1,
+        "name": "VAT0",
+        "unit": "mV",
+        "access": "ro"
+      },
+      {
+        "id": 2,
+        "name": "IAT0",
+        "unit": "mA",
+        "access": "ro"
+      },
+      {
+        "id": 3,
+        "name": "LED_BREATH_PERIOD_MS",
+        "unit": "ms",
+        "access": "rw"
+      },
+      {
+        "id": 4,
+        "name": "UVLO_HEAT_INIT_TH",
+        "unit": "mV",
+        "access": "rw"
+      },
+      {
+        "id": 5,
+        "name": "UVLO_HEAT_TH",
+        "unit": "mV",
+        "access": "rw"
+      },
+      {
+        "id": 6,
+        "name": "LONG_PUFF_TH",
+        "unit": "ms",
+        "access": "rw"
+      },
+      {
+        "id": 7,
+        "name": "CHG_OVP_TH",
+        "unit": "mV",
+        "access": "rw"
+      },
+      {
+        "id": 8,
+        "name": "CHG_TIMEOUT_TH",
+        "unit": "min",
+        "access": "rw"
+      },
+      {
+        "id": 9,
+        "name": "SHORT_COIL1_TH",
+        "unit": "mV",
+        "access": "rw"
+      },
+      {
+        "id": 10,
+        "name": "SHORT_COIL2_TH",
+        "unit": "mV",
+        "access": "ro"
+      },
+      {
+        "id": 11,
+        "name": "SHORT_COIL_RST_TH",
+        "unit": "mV",
+        "access": "rw"
+      },
+      {
+        "id": 12,
+        "name": "OPEN_COIL1_TH",
+        "unit": "mV",
+        "access": "rw"
+      },
+      {
+        "id": 13,
+        "name": "OPEN_COIL2_TH",
+        "unit": "mV",
+        "access": "ro"
+      },
+      {
+        "id": 14,
+        "name": "DRY_PUFF_ABS_TEMP_TH",
+        "unit": "degC",
+        "access": "rw"
+      },
+      {
+        "id": 15,
+        "name": "DRY_PUFF_REL_SLOPE_TH",
+        "unit": "degC/sec",
+        "access": "rw"
+      }
+    ],
+    "par32": [
+      {
+        "id": 0,
+        "name": "HEATING_TIMEOUT_TH",
+        "unit": "ms",
+        "access": "rw"
+      }
+    ]
+  }
+}

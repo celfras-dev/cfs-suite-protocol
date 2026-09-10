@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 
 from tools.extract import __main__ as extract_all
-from tools.extract import varpar
 
 # The repo root of *this* repo (CFS-SUITE-PROTOCOL) -- not
 # tools.extract.sources.PROJECT_ROOT, which points one level up, at the
@@ -54,10 +53,18 @@ def test_public_run_carries_no_defaults(tmp_path: Path):
 def _forbidden_values() -> set:
     """Every value the product bakes in, taken from the source rather than a
     hand-written list (see tests/test_extract_varpar.py's forbidden_values,
-    which this mirrors)."""
-    return {r["default"]
-            for rows in varpar.extract(internal=True)["par"].values()
-            for r in rows if "default" in r}
+    which this mirrors) -- minus tools.build.PROTOCOL_VALUE_EXEMPTIONS.
+
+    Committed spec/_generated/opcodes.json now legitimately contains 1000
+    (BURST_PERIOD_MS_MAX, a real standard constant, see opcodes.py's
+    burst_limits()), which is also LED_BREATH_PERIOD_MS's product default.
+    Without the exemption this scan cannot tell those two facts apart, same
+    as the PDF/site leak gate in tools/build.py -- so this must go through
+    build.leak_gate_values(), not a bare forbidden-defaults set, exactly
+    like tests/test_public_leak.py does.
+    """
+    from tools import build
+    return build.leak_gate_values()
 
 
 def test_committed_generated_files_are_the_public_edition():

@@ -16,14 +16,14 @@ _HEADER = ("CFS-ECIG-SUITE/FW", "App/Inc/app_proto.h")
 # are also decimal (no "0x" prefix), so the 0x-requiring pattern below would
 # skip them anyway; the lookahead is kept as the explicit, readable guard.
 _CMD_RE = re.compile(
-    r"^\s*#define\s+(CMD_(?!SET_VERSION_)[A-Z0-9_]+)\s+0x([0-9A-Fa-f]{2})u?\s*(?://\s*(.*))?$",
+    r"^\s*#define\s+(CMD_(?!SET_VERSION_)[A-Z0-9_]+)\s+0x([0-9A-Fa-f]{2})u?[ \t]*(?://\s*(.*))?$",
     re.M,
 )
 _ERR_RE = re.compile(
-    r"^\s*#define\s+(ERR_[A-Z_]+)\s+0x([0-9A-Fa-f]{2})u?\s*(?://\s*(.*))?$", re.M
+    r"^\s*#define\s+(ERR_[A-Z_]+)\s+0x([0-9A-Fa-f]{2})u?[ \t]*(?://\s*(.*))?$", re.M
 )
 _MODE_RE = re.compile(
-    r"^\s*#define\s+(OPMODE_[A-Z_]+)\s+0x([0-9A-Fa-f]{2})u?\s*(?://\s*(.*))?$", re.M
+    r"^\s*#define\s+(OPMODE_[A-Z_]+)\s+0x([0-9A-Fa-f]{2})u?[ \t]*(?://\s*(.*))?$", re.M
 )
 
 _GROUPS = [

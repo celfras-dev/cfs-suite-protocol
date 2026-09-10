@@ -67,6 +67,54 @@ def test_fw_host_only_frames_keep_leading_marker_in_note():
     assert "same shape family as CMD_LOG_BURST_FRAME" in tuning_report["note"]
 
 
+def test_comment_does_not_bridge_across_a_newline_to_a_later_define(monkeypatch):
+    """A #define with no trailing comment must not pick up a `//` comment
+    that sits on its own line below it.
+
+    Each opcode regex is `...0x([0-9A-Fa-f]{2})u?<gap>(?://\\s*(.*))?$`. If
+    `<gap>` is `\\s*` (matches newlines), a comment-less #define can absorb a
+    stray comment line that lies between it and the next #define -- and that
+    stray line is exactly the kind of comment a header author writes to
+    document the *next* opcode, not the one above it. `<gap>` must be
+    `[ \\t]*` (same line only) so an uncommented #define always comes back
+    empty, regardless of what text follows it on later lines.
+
+    One synthetic header covers CMD, ERR and OPMODE in one shot, since
+    `extract()`/`errors()`/`op_modes()` all read through the same `_text()`
+    hook and the fix is the identical `\\s*` -> `[ \\t]*` swap in all three
+    regexes.
+    """
+    snippet = (
+        "#define CMD_A 0x01u\n"
+        "// req [len u8] resp [OK]\n"
+        "#define CMD_B 0x02u  // req [own] resp [own]\n"
+        "\n"
+        "#define ERR_FOO 0x00u\n"
+        "// note that belongs to ERR_BAR\n"
+        "#define ERR_BAR 0x01u  // bar's own note\n"
+        "\n"
+        "#define OPMODE_FOO 0x00u\n"
+        "// note that belongs to OPMODE_BAR\n"
+        "#define OPMODE_BAR 0x01u  // bar's own note\n"
+    )
+    monkeypatch.setattr(opcodes, "_text", lambda: snippet)
+
+    by_id = {c["id"]: c for c in opcodes.extract()}
+    assert by_id[0x01]["req"] == ""
+    assert by_id[0x01]["resp"] == ""
+    assert by_id[0x01]["note"] == ""
+    assert by_id[0x02]["req"] == "[own]"
+    assert by_id[0x02]["resp"] == "[own]"
+
+    by_code = {e["code"]: e for e in opcodes.errors()}
+    assert by_code[0x00]["note"] == ""
+    assert by_code[0x01]["note"] == "bar's own note"
+
+    by_val = {m["value"]: m for m in opcodes.op_modes()}
+    assert by_val[0x00]["note"] == ""
+    assert by_val[0x01]["note"] == "bar's own note"
+
+
 def test_normal_req_resp_comments_note_is_unaffected():
     """The fw->host-only fix must not leak spurious leading text into the
     note of an ordinary 'req ... resp ...' comment, whether or not it has

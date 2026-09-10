@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Internal-only build output. NEVER commit: it carries product
+# threshold values that the public document deliberately omits.
+out/internal/
+
+site/

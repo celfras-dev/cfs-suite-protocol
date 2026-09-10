@@ -1,7 +1,15 @@
 import json
+import re
+import subprocess
 from pathlib import Path
 
 from tools.extract import __main__ as extract_all
+from tools.extract import varpar
+
+# The repo root of *this* repo (CFS-SUITE-PROTOCOL) -- not
+# tools.extract.sources.PROJECT_ROOT, which points one level up, at the
+# directory holding the sibling product repos sources.py reads from.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_writes_all_generated_files(tmp_path: Path):
@@ -22,3 +30,73 @@ def test_internal_edition_is_labelled(tmp_path: Path):
     extract_all.run(tmp_path, internal=True)
     d = json.loads((tmp_path / "version.json").read_text(encoding="utf-8"))
     assert d["edition"] == "internal"
+
+
+def test_internal_run_actually_carries_defaults(tmp_path: Path):
+    """The label alone doesn't prove the payload matches it -- a run() that
+    hardcoded varpar.extract(internal=False) regardless of the flag would
+    still pass test_internal_edition_is_labelled. Check content, not label."""
+    extract_all.run(tmp_path, internal=True)
+    d = json.loads((tmp_path / "varpar.json").read_text(encoding="utf-8"))
+    rows = [r for width in d["par"].values() for r in width]
+    assert rows, "no par rows extracted at all -- can't assert anything about defaults"
+    assert any("default" in r for r in rows)
+
+
+def test_public_run_carries_no_defaults(tmp_path: Path):
+    extract_all.run(tmp_path, internal=False)
+    d = json.loads((tmp_path / "varpar.json").read_text(encoding="utf-8"))
+    rows = [r for width in d["par"].values() for r in width]
+    assert rows, "no par rows extracted at all -- can't assert anything about defaults"
+    assert not any("default" in r for r in rows)
+
+
+def _forbidden_values() -> set:
+    """Every value the product bakes in, taken from the source rather than a
+    hand-written list (see tests/test_extract_varpar.py's forbidden_values,
+    which this mirrors)."""
+    return {r["default"]
+            for rows in varpar.extract(internal=True)["par"].values()
+            for r in rows if "default" in r}
+
+
+def test_committed_generated_files_are_the_public_edition():
+    """Guards the thing that actually gets published: the *committed*
+    spec/_generated/*.json, not whatever `run()` would produce right now.
+    An operator who runs `python -m tools.extract --internal` and commits
+    the result would leak product thresholds while every other test in this
+    suite (which all call run() themselves, in a tmp_path) stays green.
+
+    This reads `git show HEAD:<path>`, i.e. the committed blob, not the
+    working tree. It will therefore fail if spec/_generated has uncommitted
+    changes that differ from HEAD -- that is intended: a dirty
+    spec/_generated is exactly the state this test exists to catch before
+    it becomes a commit.
+    """
+    out = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "spec/_generated"],
+        capture_output=True, check=True, text=True,
+    )
+    tracked = [line for line in out.stdout.splitlines() if line.endswith(".json")]
+    assert tracked, "no tracked JSON found under spec/_generated"
+
+    blobs = {}
+    for relpath in tracked:
+        show = subprocess.run(
+            ["git", "-C", str(_REPO_ROOT), "show", f"HEAD:{relpath}"],
+            capture_output=True, check=True, text=True,
+        )
+        blobs[relpath] = show.stdout
+
+    version_path = next(p for p in tracked if p.endswith("version.json"))
+    version_doc = json.loads(blobs[version_path])
+    assert version_doc["edition"] == "public", \
+        f"{version_path} is labelled {version_doc['edition']!r}, not public"
+
+    forbidden = _forbidden_values()
+    assert forbidden, "forbidden-defaults derivation found nothing -- leak check would be vacuous"
+
+    for relpath, blob in blobs.items():
+        for n in forbidden:
+            if re.search(rf'(?<![\d.]){n}(?![\d.])', blob):
+                raise AssertionError(f"{n} leaked into committed {relpath}")

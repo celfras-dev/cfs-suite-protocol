@@ -1,0 +1,1954 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Celfras Standard Protocol V2.11.0</title>
+<style>
+:root { --font-body: "Segoe UI", Arial, Helvetica, sans-serif; }
+@page { size: A4; margin: 20mm 16mm 18mm; }
+body { font-family: var(--font-body); font-size: 10.5pt; line-height: 1.55;
+       color: #1b1b1b; margin: 0; }
+main { max-width: 52rem; margin: 0 auto; padding: 0 1rem 4rem; }
+h1, h2, h3 { line-height: 1.25; }
+h2 { border-bottom: 1px solid #ddd; padding-bottom: .3rem; margin-top: 2.2rem; }
+code, pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: .92em; }
+pre { background: #f6f7f9; padding: .8rem 1rem; border-radius: 4px;
+      overflow-x: auto; }
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9em; }
+th, td { border: 1px solid #d0d4da; padding: .35rem .6rem;
+         text-align: left; vertical-align: top; }
+th { background: #f2f4f7; }
+tr, table { page-break-inside: auto; }
+h2, h3 { page-break-after: avoid; }
+.cover { page-break-after: always; padding-top: 32vh; text-align: center; }
+.cover h1 { font-size: 2.4rem; margin: 0; }
+.cover .ver { font-size: 1.3rem; color: #555; }
+.badge-internal { margin-top: 2rem; color: #a1160a; font-weight: 700;
+                  letter-spacing: .06em; }
+
+/* Web relies on .tw's horizontal scrollbar to keep the generated opcode and
+   par/var tables usable; a printed page (or print-to-PDF) has no scrollbar,
+   so anything wider than the page is silently clipped at the edge instead.
+   Make wide tables fit on paper without touching the web layout above. */
+@media print {
+  .tw { overflow: visible; }
+  table { font-size: .72em; }
+  th, td { overflow-wrap: anywhere; }
+}
+
+</style>
+</head>
+<body class="web">
+
+<main><h1 id="celfras-standard-protocol-part-i-the-standard">Celfras Standard Protocol — Part I: The Standard</h1>
+<p>This part defines the wire protocol that every Celfras product implements: how
+bytes are framed on the link, how a request is answered, what the core commands
+are, and what an implementation has to do to be conforming. It is self-contained.
+A device or a host can be written against this part alone, without access to any
+product's source.</p>
+<p>Part II is a record, not a requirement. It documents how individual products
+filled in the parts this standard leaves to the product — identifier maps,
+optional command groups, layer-specific error codes. Nothing in Part II relaxes
+anything in Part I.</p>
+<h2 id="1-scope">1. Scope</h2>
+<h3 id="11-what-this-part-defines">1.1 What this part defines</h3>
+<ul>
+<li>The transport a conforming link runs on (§2).</li>
+<li>The frame format, its COBS encoding, its integrity check, and the receiver's
+  validation rules (§3).</li>
+<li>The request/response model, the status byte, and the core error space (§4).</li>
+<li>Operating modes, and which commands are answered in each (§5).</li>
+<li>The core command set and the standardised command groups (§6, §7, §8).</li>
+<li>The opcode space, what is reserved, and how a product extends it (§9).</li>
+<li>A conformance checklist (§10).</li>
+</ul>
+<h3 id="12-what-it-deliberately-does-not-define">1.2 What it deliberately does not define</h3>
+<p>Anything a product legitimately differs on: the identifier maps behind the
+variable and parameter commands (§8), which telemetry field bits carry a real
+reading (§7.2), the meaning of a tuning identifier (§6.4), and every threshold
+value a product bakes in. Also, explicitly, the <em>implementation</em> of the
+transport — see §2.</p>
+<h3 id="13-roles">1.3 Roles</h3>
+<p><strong>Host</strong> — the PC-side tool. It issues requests and consumes responses and
+unsolicited frames.</p>
+<p><strong>Device</strong> — the product firmware. It answers requests and MAY emit unsolicited
+frames.</p>
+<p><strong>Bridge</strong> — an optional relay that sits inline on the same link. It answers the
+opcodes reserved to it (§9.2) and forwards everything else to the device
+untouched. A bridge is transparent to a conforming host and device. One rule
+differs for it, and only one: a bridge MUST NOT forward a frame that failed
+validation, and MAY answer such a frame rather than discarding it in silence
+(§3.7).</p>
+<p>Exactly one host and one device participate in a link. A bridge, if present,
+does not change the frame format in either direction.</p>
+<h3 id="14-requirement-language">1.4 Requirement language</h3>
+<p><strong>MUST</strong> — an absolute requirement of this standard. An implementation that
+violates one is not conforming.
+<strong>MUST NOT</strong> — an absolute prohibition of this standard. An implementation that
+violates one is not conforming.
+<strong>SHOULD</strong> — a requirement that may be departed from only for a stated reason;
+a product that departs records it in Part II.
+<strong>MAY</strong> — genuinely optional.</p>
+<h3 id="15-byte-order-and-notation">1.5 Byte order and notation</h3>
+<p>All multi-byte fields are little-endian and unsigned unless a table says
+otherwise. Bit 0 is the least significant bit. <code>u8</code>, <code>u16</code> and <code>u32</code> denote
+unsigned integers of that width. Byte values are written in hexadecimal.</p>
+<h2 id="2-transport">2. Transport</h2>
+<p>The link is asynchronous serial: 8 data bits, no parity, one stop bit, no flow
+control. The default rate is 1 Mbaud. A product MAY document a different rate,
+but both ends MUST agree on it out of band — nothing in the protocol negotiates
+it.</p>
+<p>The link is full duplex, and both directions carry the same frame format (§3).
+The device MAY send an unsolicited frame at any time (§7); a host that cannot
+tolerate one arriving between its own request and the matching response is not
+conforming.</p>
+<p><strong>The transport backend is not part of this standard.</strong> Whether a device serves
+its UART by DMA, by a per-byte interrupt, or by polling is an implementation
+choice: nothing on the wire distinguishes them, and a host MUST NOT depend on
+which one is in use. The reference implementation ships a DMA backend and carries an
+interrupt backend selectable at build time; the two are byte-for-byte identical
+on the link, and both are conforming. Statements about ring buffers, transmit
+queues, interrupt priorities or DMA channels belong to a product's own
+documentation, never to this standard.</p>
+<p>Because the framing in §3.4 is self-synchronising, a receiver MUST recover from
+a truncated or corrupt frame without an out-of-band reset, and MUST accept
+frames that arrive back to back with no inter-frame gap. A device MUST NOT
+require an idle gap, a line break, or a preamble before a frame.</p>
+<h2 id="3-frame-format">3. Frame format</h2>
+<h3 id="31-the-decoded-frame">3.1 The decoded frame</h3>
+<p>Every frame, in either direction, has this layout once the framing of §3.4 has
+been removed:</p>
+<pre><code>[LEN u16 LE][CMD u8][SEQ u8][PAYLOAD ...][CRC16 u16 LE]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Width</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LEN</code></td>
+<td>u16 LE</td>
+<td>Number of bytes that follow it: <code>1 (CMD) + 1 (SEQ) + len(PAYLOAD) + 2 (CRC16)</code>.</td>
+</tr>
+<tr>
+<td><code>CMD</code></td>
+<td>u8</td>
+<td>The opcode. A response carries the same opcode as the request it answers.</td>
+</tr>
+<tr>
+<td><code>SEQ</code></td>
+<td>u8</td>
+<td>Correlation token, see §3.5.</td>
+</tr>
+<tr>
+<td><code>PAYLOAD</code></td>
+<td><code>LEN - 4</code></td>
+<td>Command-specific, and may be empty. For a response it is always <code>[STATUS][DATA...]</code>, see §4.</td>
+</tr>
+<tr>
+<td><code>CRC16</code></td>
+<td>u16 LE</td>
+<td>Integrity check, see §3.3.</td>
+</tr>
+</tbody>
+</table>
+<p>The total decoded frame length is <code>2 + LEN</code>. The shortest legal frame is
+therefore six bytes: <code>LEN</code> (two) + <code>CMD</code> + <code>SEQ</code> + <code>CRC16</code> (two), with an empty
+payload.</p>
+<h3 id="32-what-len-counts">3.2 What LEN counts</h3>
+<p><code>LEN</code> counts everything <strong>after</strong> the <code>LEN</code> field itself, and that includes the
+two CRC bytes. It does <strong>not</strong> count itself. A receiver MUST check <code>LEN</code> against
+the length it actually decoded and MUST discard any frame where the two
+disagree — the check is for equality, not for a lower bound.</p>
+<h3 id="33-the-integrity-check">3.3 The integrity check</h3>
+<p><code>CRC16</code> is <strong>CRC-16/CCITT-FALSE</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Width</td>
+<td>16 bits</td>
+</tr>
+<tr>
+<td>Polynomial</td>
+<td><code>0x1021</code></td>
+</tr>
+<tr>
+<td>Initial value</td>
+<td><code>0xFFFF</code></td>
+</tr>
+<tr>
+<td>Input reflected</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Output reflected</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Final XOR</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What it covers:</strong> the decoded frame from the first byte of <code>LEN</code> through the
+last byte of <code>PAYLOAD</code>. The two CRC bytes themselves are excluded. It is
+computed over the decoded frame, never over the encoded bytes of §3.4.</p>
+<p>This is the most common interoperability mistake, and two independent things
+have to be right: the CRC variant, and its coverage. Check the variant first,
+against these vectors:</p>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th>CRC16</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>31 32 33 34 35 36 37 38 39</code> (ASCII <code>"123456789"</code>)</td>
+<td><code>0x29B1</code></td>
+</tr>
+<tr>
+<td><code>01 00</code></td>
+<td><code>0x2E3E</code></td>
+</tr>
+<tr>
+<td>(empty)</td>
+<td><code>0xFFFF</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>0x29B1</code> over <code>"123456789"</code> is the published check value for this variant. An
+implementation that produces anything else has the wrong variant — reflection
+and a final XOR are the usual culprits — and no adjustment of the coverage will
+fix it. Once the variant is confirmed, check the coverage against the worked
+frame in §3.6.</p>
+<h3 id="34-framing">3.4 Framing</h3>
+<p>The decoded frame is COBS-encoded (Consistent Overhead Byte Stuffing), and a
+single <code>0x00</code> byte is appended as the frame delimiter:</p>
+<pre><code>wire bytes = COBS_encode(decoded frame) + 0x00
+</code></pre>
+<p>COBS guarantees the encoded bytes contain no <code>0x00</code>, so the delimiter is
+unambiguous. The delimiter is <strong>not</strong> part of the encoded data and is <strong>not</strong>
+covered by the CRC.</p>
+<p>A receiver MUST treat <code>0x00</code> as an unconditional frame boundary: accumulate
+bytes until one arrives, decode what accumulated, then start a new frame. This
+is what makes the link self-synchronising — after any corruption, the next
+<code>0x00</code> restores frame alignment. A receiver MUST discard a zero-length or
+otherwise undecodable accumulation rather than treating it as a frame.</p>
+<p>The encoding is COBS as published by Cheshire and Baker, and the whole of it is
+stated below. A conforming implementation needs nothing else, and in particular
+MUST NOT be written from the one-line summary "count the non-zero bytes and
+emit the count": that produces a correct encoder for short frames and a broken
+one for long ones, and §3.4.1's <code>0xFF</code> rule is the difference.</p>
+<h4 id="341-encoding">3.4.1 Encoding</h4>
+<p>The encoder walks the decoded frame and splits it into <strong>groups</strong>. Each group
+is one of:</p>
+<ul>
+<li>a run of <code>n</code> non-zero bytes, <code>0 &lt;= n &lt;= 253</code>, terminated by a <code>0x00</code> byte of
+  the decoded frame;</li>
+<li>a run of exactly 254 non-zero bytes, terminated by nothing; or</li>
+<li>the final run of <code>n</code> non-zero bytes, <code>0 &lt;= n &lt;= 253</code>, terminated by the end
+  of the decoded frame.</li>
+</ul>
+<p>Each group is emitted as one <strong>code byte</strong> followed by that group's non-zero
+bytes, in order and unaltered. The code byte is <code>n + 1</code>, so it lies in
+<code>0x01</code>-<code>0xFF</code> and is never <code>0x00</code>. A terminating <code>0x00</code> of the decoded frame is
+<strong>not</strong> emitted: the code byte stands in for it, which is how the zero is
+removed from the wire.</p>
+<p>A code of <code>0xFF</code> therefore means something different from every other value:</p>
+<ul>
+<li><code>0x01</code>-<code>0xFE</code> — <code>code - 1</code> non-zero bytes follow, <strong>and a <code>0x00</code> stood after
+  them</strong> in the decoded frame (or the frame ended there, for the last group).</li>
+<li><code>0xFF</code> — 254 non-zero bytes follow, and <strong>no <code>0x00</code> stood after them</strong>. The
+  group ended only because a code byte cannot count higher.</li>
+</ul>
+<p>An encoder MUST emit a <code>0xFF</code> code for every complete run of 254 non-zero
+bytes, and MUST then continue with a fresh group. Splitting a long zero-free
+run MUST NOT introduce a zero that was never in the frame. An encoder MUST also
+emit a code byte for the final group even when that group carries no data
+bytes: a frame that ends exactly on a 254-byte boundary is encoded as the
+<code>0xFF</code> group followed by a lone <code>0x01</code>.</p>
+<p>The encoded frame is one byte longer than the decoded frame, plus one further
+byte for each <code>0xFF</code> code — at most <code>floor(n / 254)</code> of them for an <code>n</code>-byte
+frame. The delimiter of §3.4 adds one more.</p>
+<h4 id="342-decoding">3.4.2 Decoding</h4>
+<p>A decoder MUST process the accumulated bytes — everything received since the
+previous delimiter, the delimiter itself excluded — as follows:</p>
+<ol>
+<li>Read one code byte. A code byte of <code>0x00</code> MUST be rejected: the encoder
+   never produces one, so the accumulation is not a frame.</li>
+<li>Copy the next <code>code - 1</code> bytes to the output unaltered. If fewer than
+   <code>code - 1</code> bytes remain, the frame MUST be rejected.</li>
+<li>If the code was <strong>not</strong> <code>0xFF</code> <strong>and</strong> bytes still remain, append one <code>0x00</code>
+   byte to the output. If the code was <code>0xFF</code>, or nothing remains, append
+   nothing.</li>
+<li>If bytes remain, return to step 1.</li>
+</ol>
+<p>A decoder MUST reject the whole frame rather than pass a partial one upward.</p>
+<p>Step 3 is the exact inverse of the two code meanings, and both of its
+conditions carry weight. Appending a zero after a <code>0xFF</code> group inserts a byte
+the sender never sent. Appending one after the <em>final</em> group appends a byte
+that was only ever the end of the frame. Either way the decoded length is
+wrong by one or more bytes, so the frame fails the <code>LEN</code> and CRC checks of
+§3.7 and is discarded — which means a wrong decoder shows up as a CRC failure
+on long frames, not as a decode failure. An implementer chasing that symptom
+SHOULD check step 3 before re-checking the CRC.</p>
+<h3 id="35-seq">3.5 SEQ</h3>
+<p><code>SEQ</code> correlates a response with its request.</p>
+<ul>
+<li>A response to a request MUST echo that request's <code>SEQ</code> verbatim.</li>
+<li>An unsolicited device-to-host frame — one that answers no request — MUST use
+  <code>SEQ = 0</code>.</li>
+<li><code>SEQ</code> is opaque to the device. A device MUST NOT interpret it, validate it, or
+  require it to change between requests. Allocating <code>SEQ</code> values, and detecting
+  duplicates or gaps, is entirely the host's business.</li>
+</ul>
+<p>A host that pipelines requests MUST use <code>SEQ</code> to match responses, and MUST NOT
+assume responses arrive in the order the requests were sent.</p>
+<p>Because <code>SEQ = 0</code> is how an unsolicited frame identifies itself, a host SHOULD
+NOT issue requests with <code>SEQ = 0</code> on a link where streaming (§7) is in use: a
+host-initiated stop and a device-initiated stop for the same command would
+otherwise be indistinguishable (§7.2).</p>
+<h3 id="36-worked-frames">3.6 Worked frames</h3>
+<p>Every byte in this section is computed against the reference implementation,
+not illustrative.</p>
+<h4 id="361-a-six-byte-request">3.6.1 A six-byte request</h4>
+<p>A complete <code>CMD_PING</code> request with <code>SEQ = 0x07</code> and no payload.</p>
+<p>Decoded frame — six bytes:</p>
+<pre><code>04 00 01 07 E7 0D
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Byte(s)</th>
+<th>Value</th>
+<th>Field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-1</td>
+<td><code>04 00</code></td>
+<td><code>LEN</code> = 4 — <code>CMD</code> + <code>SEQ</code> + zero payload bytes + <code>CRC16</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>01</code></td>
+<td><code>CMD</code> — the opcode from §6.1</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>07</code></td>
+<td><code>SEQ</code> — the host's correlation token; the response echoes it</td>
+</tr>
+<tr>
+<td>—</td>
+<td>—</td>
+<td><code>PAYLOAD</code> — empty for this command</td>
+</tr>
+<tr>
+<td>4-5</td>
+<td><code>E7 0D</code></td>
+<td><code>CRC16</code> = <code>0x0DE7</code>, little-endian</td>
+</tr>
+</tbody>
+</table>
+<p>The CRC is computed over bytes 0-3, <code>04 00 01 07</code> — <strong>including</strong> the two <code>LEN</code>
+bytes and <strong>excluding</strong> the two CRC bytes. An implementation that starts at
+<code>CMD</code> instead gets a different value, and its frames are dropped without an
+error reply (§3.7).</p>
+<p>On the wire, after COBS encoding and the delimiter — eight bytes:</p>
+<pre><code>02 04 05 01 07 E7 0D 00
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Byte(s)</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>02</code></td>
+<td>COBS group code: one non-zero byte follows, and a zero stood here</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>04</code></td>
+<td><code>LEN</code> low byte</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>05</code></td>
+<td>COBS group code: four non-zero bytes follow</td>
+</tr>
+<tr>
+<td>3-6</td>
+<td><code>01 07 E7 0D</code></td>
+<td><code>CMD</code>, <code>SEQ</code>, <code>CRC16</code> — carried unchanged</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>00</code></td>
+<td>Frame delimiter — not COBS data, not covered by the CRC</td>
+</tr>
+</tbody>
+</table>
+<p>Note what COBS did: the one <code>0x00</code> in the decoded frame (the <code>LEN</code> high byte)
+was removed, and the code byte that replaced it is <code>0x02</code> — one data byte, then
+a zero (§3.4.1). The final code is <code>0x05</code>: four data bytes, then the end of the
+frame.</p>
+<h4 id="362-a-frame-with-a-254-byte-run">3.6.2 A frame with a 254-byte run</h4>
+<p>The frame above cannot show the <code>0xFF</code> code, because six bytes contain no long
+run. This one can. It is a firmware-image data request, which is where a long
+zero-free run occurs in practice: image bytes are arbitrary and routinely go
+hundreds of bytes without a zero. Its opcode belongs to the band reserved to
+the bridge layer (§9.2) and is defined in Part II — the framing of this section
+is identical in both bands, and this is the case that exercises it.</p>
+<p>The decoded frame is 266 bytes:</p>
+<table>
+<thead>
+<tr>
+<th>Byte(s)</th>
+<th>Value</th>
+<th>Field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-1</td>
+<td><code>08 01</code></td>
+<td><code>LEN</code> = 264</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>E9</code></td>
+<td><code>CMD</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>09</code></td>
+<td><code>SEQ</code></td>
+</tr>
+<tr>
+<td>4-7</td>
+<td><code>00 10 00 00</code></td>
+<td>image offset, <code>u32</code> LE</td>
+</tr>
+<tr>
+<td>8-263</td>
+<td><code>01 02 03</code> … <code>FD FE 01 02</code></td>
+<td>256 image bytes; byte <code>8 + i</code> holds <code>(i mod 254) + 1</code>, so no byte of the run is zero</td>
+</tr>
+<tr>
+<td>264-265</td>
+<td><code>1A 86</code></td>
+<td><code>CRC16</code> = <code>0x861A</code>, little-endian</td>
+</tr>
+</tbody>
+</table>
+<p>Encoded it is 268 bytes, 269 with the delimiter, in five COBS groups:</p>
+<table>
+<thead>
+<tr>
+<th>Encoded byte(s)</th>
+<th>Code</th>
+<th>Data bytes</th>
+<th>What the code says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-4</td>
+<td><code>05</code></td>
+<td><code>08 01 E9 09</code></td>
+<td>four non-zero bytes, then a <code>0x00</code> — decoded byte 4</td>
+</tr>
+<tr>
+<td>5-6</td>
+<td><code>02</code></td>
+<td><code>10</code></td>
+<td>one non-zero byte, then a <code>0x00</code> — decoded byte 6</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>01</code></td>
+<td>—</td>
+<td>no data byte, then a <code>0x00</code> — decoded byte 7</td>
+</tr>
+<tr>
+<td>8-262</td>
+<td><code>FF</code></td>
+<td><code>01 02</code> … <code>FD FE</code> (254 bytes)</td>
+<td>254 non-zero bytes and <strong>no</strong> zero after them</td>
+</tr>
+<tr>
+<td>263-267</td>
+<td><code>05</code></td>
+<td><code>01 02 1A 86</code></td>
+<td>four non-zero bytes, then the end of the frame</td>
+</tr>
+<tr>
+<td>268</td>
+<td>—</td>
+<td><code>00</code></td>
+<td>Frame delimiter — not COBS data, not covered by the CRC</td>
+</tr>
+</tbody>
+</table>
+<p>The first encoded bytes are therefore <code>05 08 01 E9 09 02 10 01 FF 01 02 03 04</code>
+…, and the last are … <code>FB FC FD FE 05 01 02 1A 86 00</code>.</p>
+<p>The <code>0xFF</code> at encoded byte 8 is the point of the example. Its 254 data bytes
+are decoded bytes 8-261; the group that follows resumes at decoded byte 262
+with nothing between them. A decoder that inserts a <code>0x00</code> there produces 267
+decoded bytes instead of 266, and the frame — which arrived intact — fails both
+the <code>LEN</code> check and the CRC check and is discarded with no reply.</p>
+<p>Note the last group too. Its code is <code>0x05</code>, not <code>0xFF</code>, and the four bytes it
+carries are followed by the end of the frame rather than by a zero: decoded
+byte 265 is the CRC's high byte, and nothing follows it. A decoder that appends
+an implied zero after the final group is wrong in the same way and by the same
+one byte.</p>
+<h3 id="37-receiver-validation-in-order">3.7 Receiver validation, in order</h3>
+<p>A receiver MUST apply these checks, in this order, and MUST discard the frame on
+the first failure:</p>
+<ol>
+<li>COBS decode (§3.4.2) succeeds and yields at least six bytes.</li>
+<li>The CRC over the decoded frame, excluding its last two bytes, equals the
+   <code>CRC16</code> those two bytes carry.</li>
+<li><code>LEN</code> equals the decoded length minus two.</li>
+</ol>
+<p>A frame that fails any of these MUST be discarded, and MUST NOT be forwarded.
+What may be <em>said</em> about it depends on the role (§1.3).</p>
+<p><strong>A device MUST discard it silently</strong>, and MUST NOT answer it. The <code>CMD</code> and
+<code>SEQ</code> of a frame that failed its integrity check cannot be trusted, so there is
+no opcode to answer under and no token to answer with; a reply would be a
+guess, addressed to a request that may never have been sent.</p>
+<p><strong>A bridge MAY answer</strong> <code>[ERR][ERR_BAD_CRC]</code>, under the <code>CMD</code> and <code>SEQ</code> it
+read, and the reference bridge does. Its position is not the device's: a bridge
+that says nothing about a frame it refused to forward is indistinguishable from
+a device that received the frame and ignored it, so answering is what
+attributes the damage to the link the bridge can see. The same reasoning
+extends to an implementation whose only role is recovery — a bootloader —
+where silence is indistinguishable from a board that never started at all.</p>
+<p>A host MUST tolerate both outcomes: no answer, and an <code>[ERR][ERR_BAD_CRC]</code>
+whose <code>SEQ</code> it may not recognise.</p>
+<p>Only after all three checks pass is the frame <em>accepted</em>. Acceptance is what
+feeds the link-liveness clock of §5.3, whatever the opcode turns out to be.</p>
+<h3 id="38-maximum-frame-size">3.8 Maximum frame size</h3>
+<p>A device MUST document the largest encoded frame it accepts, delimiter
+excluded; the value is a product constant and is recorded in Part II.</p>
+<p>The limit is a real boundary, not a guideline. A receiver accumulates encoded
+bytes into a fixed buffer, and bytes past the end of it are dropped, so an
+over-long frame arrives as a truncated one and is discarded by §3.7 —
+silently, with no error reply. A host that sends one observes nothing at all,
+which is the same thing it observes from a dead link.</p>
+<ul>
+<li>A host MUST NOT send a frame longer than the device's documented limit.</li>
+<li>A host MUST NOT infer the limit by experiment: a frame that was answered
+  proves only that that frame fit.</li>
+<li>A device MUST accept every frame that the command groups it implements can
+  require of it. A device MUST NOT document a limit that excludes a command it
+  answers.</li>
+</ul>
+<h2 id="4-requests-responses-and-errors">4. Requests, responses and errors</h2>
+<h3 id="41-the-model">4.1 The model</h3>
+<p>The protocol is request/response, with an unsolicited side channel.</p>
+<ul>
+<li>Every request the device processes produces <strong>exactly one</strong> response frame,
+  carrying the same <code>CMD</code> and the same <code>SEQ</code>.</li>
+<li>A device MUST NOT answer a request twice, and MUST NOT leave a processed
+  request unanswered — with one exception, the silent-drop mode of §5.2.</li>
+<li>Unsolicited device-to-host frames (§7) carry <code>SEQ = 0</code> and answer nothing.</li>
+<li>The device is not required to process requests concurrently, and a host MUST
+  NOT assume it does.</li>
+</ul>
+<h3 id="42-the-status-byte">4.2 The status byte</h3>
+<p>A response payload is always <code>[STATUS u8][DATA ...]</code>.</p>
+<table>
+<thead>
+<tr>
+<th>STATUS</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code></td>
+<td>OK. <code>DATA</code> is the command's result, and may be empty.</td>
+</tr>
+<tr>
+<td><code>0x01</code></td>
+<td>ERR. <code>DATA[0]</code> is an error code (§4.3). Further <code>DATA</code> bytes are permitted and are error-code specific.</td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td>Reserved. No conforming device emits it.</td>
+</tr>
+</tbody>
+</table>
+<p>A host MUST treat any status other than <code>0x00</code> as a failure, and MUST NOT
+desynchronise on an unrecognised status value: consume the frame, report the
+failure, carry on. Status <code>0x02</code> in particular is reserved rather than free —
+an earlier revision of this protocol declared it as a second error status — so a
+receiver has to tolerate it arriving even though nothing sends it.</p>
+<p>A device MUST send <code>[0x01][error code]</code> rather than a bare <code>[0x01]</code>: a host
+cannot distinguish a bare error from a truncated one.</p>
+<h3 id="43-the-core-error-space">4.3 The core error space</h3>
+<p>Error codes <code>0x00</code> to <code>0x0F</code> are the <strong>core space</strong>. It is defined here and
+nowhere else, and it contains exactly these codes:</p>
+<div class="tw"><table><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody><tr><td>0x00</td><td>ERR_OK</td></tr><tr><td>0x01</td><td>ERR_BAD_LEN</td></tr><tr><td>0x02</td><td>ERR_BAD_CRC</td></tr><tr><td>0x03</td><td>ERR_BAD_ARGS</td></tr><tr><td>0x04</td><td>ERR_NOT_READY</td></tr><tr><td>0x05</td><td>ERR_UNKNOWN</td></tr></tbody></table></div>
+
+<p>Each has exactly one meaning, and this text is that meaning.</p>
+<ul>
+<li><strong><code>ERR_OK</code> (<code>0x00</code>)</strong> — no error. It exists so that zero means the same thing
+  in the code space as it does in the status byte, and it is <strong>never sent</strong>: a
+  device reports success with status <code>0x00</code> and no error code at all. <code>[0x01]
+  [0x00]</code> — an error status carrying <code>ERR_OK</code> — is a malformed response, and a
+  host MUST treat it as a failure rather than as success.</li>
+<li><strong><code>ERR_BAD_LEN</code> (<code>0x01</code>)</strong> — the payload was shorter than the command
+  requires. Decided before any value in it was examined.</li>
+<li><strong><code>ERR_BAD_CRC</code> (<code>0x02</code>)</strong> — a frame failed its integrity check, and the
+  layer that received it is reporting that fact instead of discarding it in
+  silence. A device MUST NOT send this code; a bridge or a bootloader MAY
+  (§3.7).</li>
+<li><strong><code>ERR_BAD_ARGS</code> (<code>0x03</code>)</strong> — the payload was long enough, but something in
+  it was out of range, unknown, or not writable. It is also the answer to an
+  opcode the device does not act on (§9.1).</li>
+<li><strong><code>ERR_NOT_READY</code> (<code>0x04</code>)</strong> — the command is recognised and its arguments
+  are valid, but the device's current state does not permit it. The same
+  request, unchanged, may succeed later. It is the answer for a session that is
+  already open (§6.4), a mode that has not been entered, or any other
+  precondition the host has not met.</li>
+<li><strong><code>ERR_UNKNOWN</code> (<code>0x05</code>)</strong> — the opcode is not recognised. Optional, and
+  interchangeable with <code>ERR_BAD_ARGS</code> for that condition; see §9.1.</li>
+</ul>
+<p>A product MUST NOT define a new code in <code>0x00</code>-<code>0x0F</code>, MUST NOT give an
+existing one a second meaning, and MUST NOT use one for a condition other than
+the one defined above. These are the codes a host can interpret without knowing
+what it is talking to.</p>
+<p>Note the shape of the two most common ones. <code>ERR_BAD_LEN</code> means the payload was
+too short for the command to be executed at all, decided before any value in it
+was examined. <code>ERR_BAD_ARGS</code> means the payload was long enough but something in
+it was out of range, unknown, or not writable. A device MUST NOT answer
+<code>ERR_BAD_ARGS</code> for a short payload or <code>ERR_BAD_LEN</code> for a bad value — a host
+uses the difference to tell a mis-built frame from a mis-chosen value.</p>
+<p>A command's payload length is a <strong>minimum</strong>, and only <code>LEN</code> is checked for
+equality (§3.2). A device MUST NOT answer <code>ERR_BAD_LEN</code> because a payload was
+<em>longer</em> than the command requires; it MUST read the bytes the command defines
+and ignore the rest. A host MUST NOT send trailing bytes expecting them to be
+read, and MUST NOT take an OK response as evidence that they were: the same
+response comes back either way, which is exactly why the excess cannot carry
+meaning.</p>
+<h3 id="44-the-extension-space">4.4 The extension space</h3>
+<p>Codes <code>0x10</code> and above are an <strong>extension space</strong>, and this standard assigns
+nothing in it. A code there means whatever the layer that sent it says it means,
+and it is interpretable only once the host knows which layer answered.</p>
+<p>This is not hypothetical. The bridge layer (§9.2) uses <code>0x11</code>-<code>0x15</code> for its
+SWD and core-control operations, <code>0x20</code>, <code>0x21</code> and <code>0xE1</code> for flash
+operations, and <code>0x30</code>-<code>0x35</code> for its own firmware update. Error codes and
+opcodes are separate spaces: the <code>0xE1</code> named here is an error code, and the
+fact that <code>0xE1</code> also falls inside the bridge's reserved <em>opcode</em> band (§9.2)
+says nothing about it — where the byte sits in the frame is what decides which
+space it belongs to. The first block is worth naming precisely: <code>0x14</code> and
+<code>0x15</code> are core halt and core resume, which sit beside the SWD errors without
+being SWD errors, and reading them as transport faults has cost bench time.
+Those meanings are the bridge's — the blocks named here are the whole of that
+layer's allocation, and the bridge appendix of Part II carries the commands
+that raise them — and they say nothing about what a different layer might
+assign to the same numbers. A device and a bridge on one link can both use
+<code>0x30</code> for unrelated things without conflict, because the frame says which of
+them answered.</p>
+<p>Rules a product MUST follow when it needs its own error codes:</p>
+<ol>
+<li>Allocate at <code>0x10</code> or above. Never in the core space.</li>
+<li>Document the allocation in Part II, against the layer that owns it.</li>
+<li>Assume nothing about numbers outside your own layer — a code is not free
+   just because some other layer does not use it.</li>
+</ol>
+<h2 id="5-operating-modes">5. Operating modes</h2>
+<h3 id="51-the-modes">5.1 The modes</h3>
+<p>A device is always in exactly one operating mode. <code>CMD_SET_MODE</code> (§6.1) is what
+changes it.</p>
+<div class="tw"><table><thead><tr><th>Value</th><th>Name</th></tr></thead><tbody><tr><td>0x00</td><td>OPMODE_ISP</td></tr><tr><td>0x01</td><td>OPMODE_NORMAL</td></tr><tr><td>0x02</td><td>OPMODE_DEBUG</td></tr><tr><td>0x03</td><td>OPMODE_TUNING</td></tr><tr><td>0x04</td><td>OPMODE_TEST</td></tr></tbody></table></div>
+
+<p>The standard assigns the values and fixes what each mode is <em>for</em>. What a mode
+does inside a product — which subsystems it starts, suspends or ignores — is
+product-defined and recorded in Part II.</p>
+<ul>
+<li><strong><code>OPMODE_ISP</code></strong> — selects the product's in-system-programming path. A device
+  that implements it MAY stop acting on its ordinary inputs while in it, and
+  MAY return itself to <code>OPMODE_NORMAL</code> on its own if nothing further arrives.</li>
+<li><strong><code>OPMODE_NORMAL</code></strong> — the boot default, and the quiet one. See §5.2.</li>
+<li><strong><code>OPMODE_DEBUG</code></strong> — every command the device implements is answered.</li>
+<li><strong><code>OPMODE_TUNING</code></strong> — reserved for host-driven calibration (§6.4).</li>
+<li><strong><code>OPMODE_TEST</code></strong> — reserved for a product's own production test.</li>
+</ul>
+<p>A device MUST boot into <code>OPMODE_NORMAL</code>. A device MUST answer <code>CMD_SET_MODE</code>
+with <code>ERR_BAD_ARGS</code> for a mode value it does not implement, rather than ignoring
+it or selecting a neighbouring mode.</p>
+<p>A reserved mode that a device accepts without acting on is still acknowledged as
+OK — the acknowledgement means "the value is recognised", not "the mode did
+something".</p>
+<h3 id="52-what-normal-answers">5.2 What NORMAL answers</h3>
+<p><code>OPMODE_NORMAL</code> is the boot default, and it is deliberately quiet: it isolates
+the device's own timing from host traffic until a host asks for it.</p>
+<p>In <code>OPMODE_NORMAL</code> a device MUST process, and answer, exactly these commands:
+<code>CMD_PING</code>, <code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>, <code>CMD_SET_MODE</code>, <code>CMD_DBG_ONLINE</code> and
+<code>CMD_RESET</code> (§6.1, §6.2). Every other opcode — assigned, unassigned or
+unimplemented alike — MUST be <strong>silently dropped</strong>: no response at all, not even
+an error, and no action taken.</p>
+<p>Those six are the normative set; no other list of them anywhere is
+authoritative.</p>
+<p>This is the one place in this standard where a well-formed request goes
+unanswered, and both ends have to understand it the same way. A host that gets
+no answer in <code>OPMODE_NORMAL</code> has not found a broken device; it has found a
+device nobody has asked to leave the boot mode. <code>CMD_SET_MODE</code> is processed in
+every mode, and is the only way out.</p>
+<p><code>CMD_PING</code>, <code>CMD_INFO</code> and <code>CMD_GET_VERSION</code> are answered in every mode by
+design: identifying a device and checking that it is alive MUST NOT require
+changing its state.</p>
+<h3 id="53-link-liveness">5.3 Link liveness</h3>
+<p>While in any mode other than <code>OPMODE_NORMAL</code>, a device MUST return itself to
+<code>OPMODE_NORMAL</code> if no frame is accepted (§3.7) for longer than the link-liveness
+interval, <code>ONLINE_TIMEOUT_MS</code>. The timer is reset by <strong>any</strong> accepted frame, not
+by one specific opcode.</p>
+<p>A host that intends to stay out of <code>OPMODE_NORMAL</code> MUST therefore send
+<em>something</em> within every such interval. <code>CMD_DBG_ONLINE</code> exists as the cheapest
+choice — it takes no payload and does nothing else — but any accepted frame
+serves.</p>
+<p>The purpose is not liveness reporting. It is that a mode other than the boot
+default may have suspended some of the device's own protective behaviour, and a
+pulled cable must not leave it suspended. A conforming device MUST make the
+revert unconditional: it cannot depend on the host acknowledging anything,
+because the failure being defended against is the host being gone.</p>
+<p>The interval's value is a product constant, reported in Part II.</p>
+<h2 id="6-the-core-command-set">6. The core command set</h2>
+<p>The tables in this section are generated from the authoritative opcode
+definitions. Request and response shapes are given in the tables; the prose
+gives the rules around them.</p>
+<h3 id="61-identity-mode-and-liveness">6.1 Identity, mode and liveness</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x01</td><td>CMD_PING</td><td>[]</td><td>[OK][&quot;PONG&quot;]</td><td></td></tr><tr><td>0x02</td><td>CMD_INFO</td><td>[]</td><td>[OK][id string, contains &quot;CFS&quot;]</td><td></td></tr><tr><td>0x03</td><td>CMD_SET_MODE</td><td>[op_mode u8]</td><td>[OK] or [ERR][ERR_BAD_ARGS]</td><td></td></tr><tr><td>0x04</td><td>CMD_DBG_ONLINE</td><td>[]</td><td>[OK]</td><td>liveness ping, processed in any op_mode</td></tr><tr><td>0x05</td><td>CMD_GET_VERSION</td><td>[sel u8]</td><td>[OK][sel][major][minor][patch]</td><td></td></tr></tbody></table></div>
+
+<p>Every command in this group MUST be implemented by every conforming device, and
+every one of them is answered in every operating mode.</p>
+<ul>
+<li><strong><code>CMD_PING</code></strong> — the liveness probe. Its response payload is fixed text; a
+  host SHOULD check the status byte rather than parse the text.</li>
+<li><strong><code>CMD_INFO</code></strong> — a human-readable identity string. It is free text, and its
+  content is product-defined. A host MUST NOT parse it to make a decision;
+  <code>CMD_GET_VERSION</code> exists for that.</li>
+<li><strong><code>CMD_SET_MODE</code></strong> — see §5.</li>
+<li><strong><code>CMD_DBG_ONLINE</code></strong> — a no-op whose only effect is resetting the liveness
+  timer of §5.3.</li>
+<li><strong><code>CMD_GET_VERSION</code></strong> — the machine-readable identity. One opcode answers more
+  than one question, through a leading selector byte, and the response echoes
+  the selector so that a reply is self-describing: readable out of a log, and
+  matchable by a host that pipelined both requests.</li>
+</ul>
+<p>The request is <code>[sel u8]</code> and the response is
+<code>[OK][sel u8][major u8][minor u8][patch u8]</code>, with the selector repeated at
+<code>DATA[0]</code>. This standard defines two selectors:</p>
+<div class="tw"><table><thead><tr><th>Value</th><th>Name</th><th>Meaning</th></tr></thead><tbody><tr><td>0x00</td><td>VER_SEL_FW</td><td>the firmware build on this board</td></tr><tr><td>0x01</td><td>VER_SEL_CMD_SET</td><td>the opcode table it implements</td></tr></tbody></table></div>
+
+<p><code>VER_SEL_FW</code> reports the version of the firmware image that answered — a
+product identity, and not comparable across products. <code>VER_SEL_CMD_SET</code> reports
+the command-set version of §9.3, which every implementation of this standard
+carries and which is comparable across all of them. Both are the same
+<code>MAJOR.MINOR.PATCH</code> shape, and neither can be derived from the other.</p>
+<p>Selector values <code>0x02</code> and above are unassigned by this standard. A device MUST
+answer <code>ERR_BAD_ARGS</code> for a selector it does not implement, and MUST NOT answer
+with a different selector's value — a host that pipelined two requests has only
+the echoed selector to tell the replies apart. Every conforming device MUST
+implement both selectors above. Selector numbering is per opcode and is not
+shared: the bridge layer has its own version command (§9.2, Part II) with its
+own selector space, and the same selector value there means something else.</p>
+<p>A host SHOULD read the command-set version before relying on any opcode outside
+this group.</p>
+<h3 id="62-device-control">6.2 Device control</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x10</td><td>CMD_RESET</td><td>[]</td><td>[OK][&quot;SYSTEM RESET&quot;], then NVIC_SystemReset()</td><td></td></tr><tr><td>0x11</td><td>CMD_ACTIVATE</td><td>[]</td><td>[OK]  (stub)</td><td></td></tr><tr><td>0x12</td><td>CMD_DEACTIVATE</td><td>[]</td><td>[OK]  (stub)</td><td></td></tr><tr><td>0x13</td><td>CMD_START_HEATING</td><td>[]</td><td>[OK][3 bytes]  (stub)</td><td></td></tr><tr><td>0x14</td><td>CMD_STOP_HEATING</td><td>[]</td><td>[OK][3 bytes]  (stub)</td><td></td></tr></tbody></table></div>
+
+<p><code>CMD_RESET</code> is the command in this group required of every device, and it is
+answered in every mode. A device MUST send its response <strong>before</strong> resetting,
+and MUST allow that response to leave the transmit path first; no frame follows
+the reset. A host MUST treat the link as re-initialised afterwards — the device
+comes back in <code>OPMODE_NORMAL</code> (§5.1).</p>
+<p>The remaining opcodes in this group are the standardised places for a product's
+own activation and heating control. A product that does not implement one MUST
+answer it per §9.1 rather than acknowledging it, and MUST NOT reuse one of these
+opcodes for an unrelated function.</p>
+<p><strong>A known deviation, stated rather than smoothed over.</strong> The reference firmware
+does not meet that rule today: <code>CMD_ACTIVATE</code>, <code>CMD_DEACTIVATE</code>,
+<code>CMD_START_HEATING</code> and <code>CMD_STOP_HEATING</code> answer <code>[OK]</code> whether or not the
+product acts on them, which is why the table above marks each of them a stub.
+The rule stands and a new implementation MUST NOT copy the behaviour; the
+consequence while it lasts is that an <code>[OK]</code> from those four opcodes is not
+evidence that anything happened, and a host MUST NOT read it as such. Part II
+records which products are affected.</p>
+<h3 id="63-register-access">6.3 Register access</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x20</td><td>CMD_REG_WRITE8</td><td>[reg_addr u8][reg_data u8]</td><td>[OK][resp_data u8]</td><td></td></tr><tr><td>0x21</td><td>CMD_REG_READ8</td><td>[reg_addr u8]</td><td>[OK][resp_data u8]</td><td></td></tr><tr><td>0x22</td><td>CMD_REG_WRITE16</td><td>[reg_addr u8][reg_data u16]</td><td>[OK][resp_data u16]</td><td></td></tr><tr><td>0x23</td><td>CMD_REG_READ16</td><td>[reg_addr u8]</td><td>[OK][resp_data u16]</td><td></td></tr><tr><td>0x24</td><td>CMD_REG_BURST_READ16</td><td>[reg_addr u8]</td><td>[OK][resp_data u16]</td><td></td></tr></tbody></table></div>
+
+<p>An optional group, for products that expose a peripheral or companion-chip
+register file. Register addresses and their contents are entirely
+product-defined. A product with no register file MUST answer this group per
+§9.1.</p>
+<h3 id="64-tuning">6.4 Tuning</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x70</td><td>CMD_TUNING_START</td><td>[tuning_id u8][duration_ms u32][log_fields_mask u16][report_period_ms u16]</td><td>[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td></td></tr><tr><td>0x71</td><td>CMD_TUNING_REPORT_FRAME</td><td></td><td>[OK][tick_ms u32][field u16]... (one u16 per set bit in log_fields_mask, LSB first)</td><td>(fw-&gt;host only, seq=0) same shape family as CMD_LOG_BURST_FRAME</td></tr><tr><td>0x72</td><td>CMD_TUNING_END</td><td>[]</td><td>[OK]</td><td>host-initiated (echoes req seq) or fw-initiated on duration timeout (seq=0), same idempotent shape as CMD_LOG_BURST_STOP</td></tr><tr><td>0x73</td><td>CMD_SET_TUNING_PAR</td><td>[tuning_id u8][coil_idx u8][heating_mode u8][heater_type u8][step u8][value u16 LE]</td><td>[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td>no session required</td></tr><tr><td>0x74</td><td>CMD_GET_TUNING_PAR</td><td>[tuning_id u8][coil_idx u8][heating_mode u8][heater_type u8][step u8]</td><td>[OK][value u16 LE] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td>no session required</td></tr></tbody></table></div>
+
+<p>An optional group for host-driven calibration, in which the device runs its real
+production control algorithm under host-controlled timing so that a bench can
+measure it. The standard fixes the <strong>shape</strong>, not the content:</p>
+<ul>
+<li><code>CMD_TUNING_START</code> opens a session; a second one while a session is active
+  MUST be refused with <code>ERR_NOT_READY</code>.</li>
+<li>While a session is active, the device emits report frames unsolicited at the
+  requested cadence, with <code>SEQ = 0</code>, in the field layout of §7.2.</li>
+<li><code>CMD_TUNING_END</code> closes a session and is <strong>dual-purpose</strong>, exactly as
+  <code>CMD_LOG_BURST_STOP</code> is (§7.2): host-initiated, it echoes the request's <code>SEQ</code>
+  and is idempotent; device-initiated — on the session's duration elapsing, or
+  because the device ended the run itself — it arrives with <code>SEQ = 0</code>. A host
+  MUST handle both arrival paths as the same session-ended event.</li>
+<li>The device MAY end a session early for its own reasons. A host MUST NOT assume
+  a session runs for its full requested duration, and MUST NOT assume every
+  session yields at least one report frame.</li>
+<li>The parameter commands in this group address a calibration table by a tuple of
+  indices. Every index MUST be bounds-checked against the real dimension of the
+  table it addresses, and a violation MUST be <code>ERR_BAD_ARGS</code> — never a clamp,
+  and never a silent write to a neighbouring cell.</li>
+</ul>
+<p>Which tuning identifiers exist, what each one sweeps, what the index tuple means
+for each, and which suspensions of a product's own protective behaviour a
+session implies, are all product-defined and recorded in Part II.</p>
+<h3 id="65-display">6.5 Display</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x60</td><td>CMD_DISP_ON</td><td>[]</td><td>[OK]</td><td></td></tr><tr><td>0x61</td><td>CMD_DISP_OFF</td><td>[]</td><td>[OK]</td><td></td></tr></tbody></table></div>
+
+<p>An optional group. A product with no host-controllable display answers it per
+§9.1.</p>
+<h2 id="7-log-and-telemetry-streaming">7. Log and telemetry streaming</h2>
+<p>Both mechanisms in this section send device-to-host frames that answer no
+request. All of them carry <code>SEQ = 0</code> (§3.5).</p>
+<p>Both groups are <strong>optional</strong>. A product that implements neither MUST answer
+their opcodes per §9.1; nothing else in this standard depends on them.</p>
+<p><strong>An unsolicited frame is shaped exactly like a response.</strong> Answering no
+request does not change its payload: it is <code>[STATUS u8][DATA ...]</code> as §4.2
+requires, with <code>STATUS = 0x00</code>, and the frame's own content begins at
+<code>DATA[0]</code> — that is, at payload byte 1, not payload byte 0. This holds for
+every frame in this section and for the tuning report frames of §6.4. A host
+that reads the first payload byte as content is off by one on every sample it
+ever takes, and the error is silent, because a status byte of <code>0x00</code> is a
+plausible first data byte. The generated tables spell the shape out, <code>[OK]</code>
+first.</p>
+<h3 id="71-text-log">7.1 Text log</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x30</td><td>CMD_LOG_FRAME</td><td></td><td>[OK][text bytes]</td><td>(fw-&gt;host only)</td></tr><tr><td>0x31</td><td>CMD_LOG_START</td><td>[]</td><td>[OK]</td><td></td></tr><tr><td>0x32</td><td>CMD_LOG_STOP</td><td>[] (host) or (fw-&gt;host, unsolicited)</td><td>[OK]</td><td></td></tr></tbody></table></div>
+
+<p>A pull-based handshake for free-text diagnostics, shaped so that the device's
+log output cannot flood the link:</p>
+<ol>
+<li>The host sends <code>CMD_LOG_START</code>.</li>
+<li>The device MUST send its acknowledgement <strong>before</strong> it arms logging, and
+   MUST queue the acknowledgement ahead of anything that follows it, so the
+   host always sees the ack before any log content. The ordering is
+   load-bearing: a device that arms first can emit a log line while the host is
+   still waiting for its response, and the host will parse that line as the
+   response it asked for.</li>
+<li>The device sends the next log line as one <code>CMD_LOG_FRAME</code> carrying the text,
+   followed by one <code>CMD_LOG_STOP</code>.</li>
+<li>The host re-issues <code>CMD_LOG_START</code> for the next line.</li>
+</ol>
+<p>A host MUST tolerate <code>CMD_LOG_STOP</code> arriving with no <code>CMD_LOG_FRAME</code> before it:
+that means the device had nothing to say. A host MUST NOT assume the text is
+NUL-terminated, and MUST take the payload length as authoritative.</p>
+<p>A host MUST also tolerate a device that keeps emitting frames without a further
+<code>CMD_LOG_START</code> — the disarm step is what bounds the stream to one line, and a
+product MAY deliberately leave it armed for continuous telemetry. A host that
+needs the stream to stop MUST have a way to disarm it: <code>CMD_SET_MODE</code> selecting
+<code>OPMODE_NORMAL</code> always does, and a product MAY also expose logging as a
+parameter slot (§8).</p>
+<p>Text logging is for diagnostics. Anything sampled at a fixed cadence belongs in
+§7.2 instead — text formatting and parsing at those rates is exactly the cost
+the binary path exists to avoid.</p>
+<h3 id="72-binary-telemetry-bursts">7.2 Binary telemetry bursts</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x40</td><td>CMD_LOG_BURST_START</td><td>[fields_mask u16][period_ms u16][duration_ms u32]</td><td>[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td></td></tr><tr><td>0x41</td><td>CMD_LOG_BURST_FRAME</td><td></td><td>[OK][tick_ms u32][field u16]... (one u16 per set bit in fields_mask, LSB first)</td><td>(fw-&gt;host only, seq=0)</td></tr><tr><td>0x42</td><td>CMD_LOG_BURST_STOP</td><td>[]</td><td>[OK][total_frame_cnt u16]</td><td>host-initiated (echoes req seq) or fw-initiated on duration timeout (seq=0)</td></tr></tbody></table></div>
+
+<p>A fixed-width binary stream for time-series measurement.</p>
+<p><strong>Starting a session.</strong> <code>CMD_LOG_BURST_START</code> takes a field bitmask, a report
+period and a duration. The period MUST lie within
+<code>[BURST_PERIOD_MS_MIN, BURST_PERIOD_MS_MAX]</code>, and the duration, if non-zero,
+within <code>[BURST_DURATION_MS_MIN, BURST_DURATION_MS_MAX]</code>; a value outside either
+range MUST be refused with <code>ERR_BAD_ARGS</code>, not clamped.</p>
+<p>These are protocol constants of this standard, identical for every product, and
+this is where their values live:</p>
+<div class="tw"><table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>BURST_DURATION_MS_INFINITE</td><td>0</td></tr><tr><td>BURST_DURATION_MS_MAX</td><td>1000000</td></tr><tr><td>BURST_DURATION_MS_MIN</td><td>100</td></tr><tr><td>BURST_MAX_FIELDS</td><td>16</td></tr><tr><td>BURST_PERIOD_MS_MAX</td><td>1000</td></tr><tr><td>BURST_PERIOD_MS_MIN</td><td>10</td></tr></tbody></table></div>
+
+<p><code>BURST_DURATION_MS_INFINITE</code> is a reserved duration value, not a member of the
+duration range: it means <em>no</em> duration, and a session started with it runs
+until the host stops it (<strong>Stopping</strong>, below). It is the one duration below
+<code>BURST_DURATION_MS_MIN</code> that a device MUST accept. <code>BURST_MAX_FIELDS</code> is how
+many field bits the mask can carry, which is why the mask is a <code>u16</code>.</p>
+<p>Period and duration are both in milliseconds.</p>
+<p><strong>The field mask</strong> selects signals from the standard <code>LOG_FIELD_*</code> family, one
+bit each. The bit assignments are part of this standard:</p>
+<div class="tw"><table><thead><tr><th>Bit</th><th>Name</th></tr></thead><tbody><tr><td>0x01</td><td>LOG_FIELD_VDD</td></tr><tr><td>0x02</td><td>LOG_FIELD_VAT</td></tr><tr><td>0x04</td><td>LOG_FIELD_IAT</td></tr><tr><td>0x08</td><td>LOG_FIELD_PWR</td></tr><tr><td>0x10</td><td>LOG_FIELD_DUTY</td></tr><tr><td>0x20</td><td>LOG_FIELD_PROT</td></tr><tr><td>0x40</td><td>LOG_FIELD_RAT</td></tr></tbody></table></div>
+
+<p>Each bit names a quantity, and the quantity is what the standard fixes:</p>
+<ul>
+<li><code>LOG_FIELD_VDD</code> — the device's own supply rail.</li>
+<li><code>LOG_FIELD_VAT</code> — the voltage across the driven load.</li>
+<li><code>LOG_FIELD_IAT</code> — the current through it.</li>
+<li><code>LOG_FIELD_PWR</code> — the power delivered to it.</li>
+<li><code>LOG_FIELD_DUTY</code> — the duty cycle of the drive.</li>
+<li><code>LOG_FIELD_PROT</code> — the device's protection status, as a bitfield.</li>
+<li><code>LOG_FIELD_RAT</code> — the load resistance the device computed.</li>
+</ul>
+<p>Every field is carried as a <code>u16</code>. Two things are product-defined and recorded
+in Part II: the <strong>scale, unit and derivation</strong> behind each field — a host that
+reads a value without knowing the product's scale has a number, not a
+measurement — and <strong>which bits the product has wired</strong> to a real reading at
+all.</p>
+<p>A device MUST accept a bit it has not wired, without error, and MUST report
+that field as zero. Bits above the highest assigned one are unassigned by this
+standard, and a device MUST treat an unassigned bit exactly as it treats an
+unwired one: accepted, reported as zero. Both rules exist so that a host built
+against a later product does not fail against an older one.</p>
+<p><strong>Frame layout.</strong> Each <code>CMD_LOG_BURST_FRAME</code> payload is
+<code>[STATUS][tick_ms u32][field u16] ...</code>: the status byte of §4.2, always <code>0x00</code>;
+then a <code>u32</code> timestamp in milliseconds; then one <code>u16</code> per bit <strong>set in the
+requested mask</strong>, in ascending bit order. The order is fixed by the bit numbers
+and is not the host's to choose; a bit that is not set contributes no <code>u16</code> at
+all. The timestamp MUST NOT decrease within a session and its zero point MUST
+NOT change during one; where that zero point sits is product-defined. The mask
+is not repeated in the frame: the host MUST decode using the mask it sent. A
+device MUST NOT reorder the values, and MUST NOT omit one.</p>
+<p><strong>Stopping.</strong> <code>CMD_LOG_BURST_STOP</code> is dual-purpose, and this is the shape the
+tuning group reuses (§6.4):</p>
+<ul>
+<li><em>Host-initiated</em> — a request. The device stops any active session and answers
+  with the request's own <code>SEQ</code>. It MUST be idempotent: stopping a session that
+  is not running is OK, not an error. This is the only way to end an
+  infinite-duration session, and it also cancels a finite one early.</li>
+<li><em>Device-initiated</em> — unsolicited, <code>SEQ = 0</code>, sent when a non-zero duration
+  elapses.</li>
+</ul>
+<p>Both carry the same payload. A host MUST resolve its session state from either.</p>
+<p><strong>Concurrency.</strong> Sampling MUST NOT block command dispatch: ordinary traffic,
+including the host's own stop request, has to keep flowing while a session is
+active. A device that runs its sweep inside the command handler cannot be
+stopped, and is not conforming.</p>
+<h2 id="8-variables-and-parameters">8. Variables and parameters</h2>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x50</td><td>CMD_VAR8_SET</td><td>[var_id u8][value u8]</td><td>[OK]</td><td></td></tr><tr><td>0x51</td><td>CMD_VAR8_GET</td><td>[var_id u8]</td><td>[OK][value u8]</td><td></td></tr><tr><td>0x52</td><td>CMD_VAR16_SET</td><td>[var_id u8][value u16 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x53</td><td>CMD_VAR16_GET</td><td>[var_id u8]</td><td>[OK][value u16 LE]</td><td></td></tr><tr><td>0x54</td><td>CMD_VAR32_SET</td><td>[var_id u8][value u32 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x55</td><td>CMD_VAR32_GET</td><td>[var_id u8]</td><td>[OK][value u32 LE]</td><td></td></tr><tr><td>0x56</td><td>CMD_PAR8_SET</td><td>[par_id u8][value u8]</td><td>[OK]</td><td></td></tr><tr><td>0x57</td><td>CMD_PAR8_GET</td><td>[par_id u8]</td><td>[OK][value u8]</td><td></td></tr><tr><td>0x58</td><td>CMD_PAR16_SET</td><td>[par_id u8][value u16 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x59</td><td>CMD_PAR16_GET</td><td>[par_id u8]</td><td>[OK][value u16 LE]</td><td></td></tr><tr><td>0x5A</td><td>CMD_PAR32_SET</td><td>[par_id u8][value u32 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x5B</td><td>CMD_PAR32_GET</td><td>[par_id u8]</td><td>[OK][value u32 LE]</td><td></td></tr></tbody></table></div>
+
+<p>Two families of commands give indexed access to device state, in three widths
+each. The distinction is what they reach:</p>
+<ul>
+<li><strong><code>CMD_VAR*</code></strong> — the <strong>variable</strong> map: live runtime state. Mostly a read-only
+  view of what the firmware is actually doing (state, measurements, timers,
+  gauges) rather than a second copy of it, plus a small writable group of
+  host-supplied inputs that stand in for something the device would otherwise
+  read from its own hardware.</li>
+<li><strong><code>CMD_PAR*</code></strong> — the <strong>parameter</strong> map: the device's configuration and
+  threshold store.</li>
+</ul>
+<p>This group is <strong>optional</strong>. A product that implements neither family MUST
+answer all twelve opcodes per §9.1. A product MAY implement one family without
+the other, and MAY implement one width without the others — but a width that is
+implemented MUST implement both its <code>SET</code> and its <code>GET</code>, since a value that can
+be written and not read back cannot be checked.</p>
+<p>Both families share one shape. <code>SET</code> takes <code>[id u8][value]</code>; <code>GET</code> takes
+<code>[id u8]</code> and answers <code>[OK][value]</code>; and the value is a <code>u8</code>, <code>u16</code> or <code>u32</code>,
+little-endian, according to the command's width. The three widths are three
+separate identifier spaces — <code>id 3</code> of the 8-bit space and <code>id 3</code> of the 16-bit
+space are unrelated slots.</p>
+<p>Required behaviour:</p>
+<ul>
+<li>An <code>id</code> at or beyond the width's table size MUST be answered <code>ERR_BAD_ARGS</code>,
+  before any dispatch is attempted.</li>
+<li>A <code>SET</code> to a read-only slot MUST be answered <code>ERR_BAD_ARGS</code>. It MUST NOT store
+  the value, and MUST NOT answer OK — a host cannot tell a silently ignored
+  write from a successful one.</li>
+<li>A conforming <strong>device</strong> MUST document the range it accepts for each writable
+  slot. The range is the device's own statement about itself: a slot that
+  accepts every value its width can hold documents that, and a slot that
+  accepts less documents what it accepts. This standard does not prescribe
+  where that documentation lives or what form it takes — a datasheet, a
+  product manual, or an appendix of the shape Part II uses — only that the
+  device's own statement of its ranges exists and is the one a host uses.
+  Limits a host tool keeps in its own copy of the identifier map are that
+  tool's input affordance, adjustable by whoever runs it, and are not the
+  device's range — a host MUST NOT treat them as one.</li>
+<li>A <code>SET</code> with a value the slot does not accept MUST be answered
+  <code>ERR_BAD_ARGS</code>. A device MUST NOT mask or clamp the value into range, and
+  MUST NOT answer OK to a value it then discards: a host asking for something
+  impossible has a bug, and every one of those three outcomes hands it
+  plausible-looking readings instead of the error that would surface it.</li>
+<li>A <code>GET</code> of a slot, issued after a successful <code>SET</code> of that same slot, MUST
+  return the value that was set, unless the device itself has changed it in the
+  meantime. This is the observable form of the rule, and it is the only form a
+  host can check: where the value is kept is the device's business, but a write
+  that cannot be read back is indistinguishable from a write that was
+  discarded. A slot that cannot meet this MUST reject <code>SET</code> with
+  <code>ERR_BAD_ARGS</code> and MUST be declared read-only.</li>
+</ul>
+<p>Those last two are one rule seen from the wire, and it is the whole of what a
+host can observe: <strong>after a <code>SET</code> answered OK, a <code>GET</code> of that slot returns
+what was set; and a device that will not take a value says so instead of
+answering OK.</strong> There is no conforming third outcome — no OK that means the
+device kept something else, and none that means it kept nothing.</p>
+<p>The failure this forbids is easy to build by accident, and it is worth naming
+because it is not a protocol mistake at all. Where a slot's setter refuses a
+value inside the device but has no way to report the refusal back to the
+command handler — a setter that returns <code>void</code> is the usual shape — the write
+is dropped and the handler, having nothing to report, answers OK. Nothing on
+the wire contradicts that until a <code>GET</code> disagrees with the last value written,
+and a host that never re-reads the slot will not find out at all. The refusal
+has to reach the layer that composes the response, and that layer has to send
+<code>ERR_BAD_ARGS</code>.</p>
+<h3 id="81-the-identifier-maps-are-product-defined-and-this-is-load-bearing">8.1 The identifier maps are product-defined, and this is load-bearing</h3>
+<p>This standard defines the commands, the widths and the error behaviour. It does
+<strong>not</strong> define which slot number means which quantity. Those maps are assigned
+per product, and are recorded in Part II.</p>
+<p>They are <strong>not</strong> portable between products, and the protocol cannot defend
+against using the wrong one. A slot number valid on one product is very likely
+valid on another and addresses a completely different field — so the device
+performs the wrong write and answers <strong>OK</strong>. There is no error to observe, at
+any layer. Therefore:</p>
+<ul>
+<li>A host MUST establish which product, and which command-set version, it is
+  talking to (<code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>) before issuing any <code>VAR</code>/<code>PAR</code>
+  access, and MUST use that product's own map.</li>
+<li>A product MUST assign new slots by appending. Renumbering an existing slot
+  changes what an unchanged host writes, and is a MAJOR command-set change
+  (§9.3).</li>
+</ul>
+<h3 id="82-where-two-opcodes-reach-one-field-they-must-agree">8.2 Where two opcodes reach one field, they MUST agree</h3>
+<p>This standard defines more than one route to a device's configurable state:
+the parameter family above, and, on a product that implements the tuning group,
+that group's own parameter commands (§6.4). A product MAY expose the same
+underlying field through more than one of them.</p>
+<p>Where it does, those opcodes MUST agree about that field. They MUST agree on
+whether it is writable at all, and they MUST accept the same values for it.</p>
+<p>Without that rule a product can answer two different things about one field in
+one build: a write accepted and answered OK through one opcode, and the
+identical write refused with <code>ERR_BAD_ARGS</code> through another. A host has no way
+to resolve the contradiction. Neither answer is wrong on its own terms — each
+handler is applying a rule the other does not know about — and nothing in the
+frame says which one describes the device, so the host is left to decide
+whether the field took the value by re-reading it through a third route.</p>
+<p>Writability is a property of the field, not of the opcode a host happened to
+reach it through, and a host is entitled to establish it once and rely on it
+everywhere. A product that means a field to be reachable by only one opcode
+expresses that by not mapping it into the other, rather than by mapping it and
+refusing it there.</p>
+<h2 id="9-opcode-space-reservations-and-evolution">9. Opcode space, reservations and evolution</h2>
+<h3 id="91-unassigned-and-unimplemented-opcodes">9.1 Unassigned and unimplemented opcodes</h3>
+<p>Outside <code>OPMODE_NORMAL</code>, a device MUST answer <strong>every</strong> opcode it does not act
+on with <code>[ERR][ERR_BAD_ARGS]</code>. That covers both cases equally: an opcode this
+standard has not assigned, and one it has assigned that this product does not
+implement. Silence is not a conforming answer — a host has to be able to tell an
+unsupported command from a dead link.</p>
+<p>The single exception is the silent-drop behaviour of <code>OPMODE_NORMAL</code> (§5.2).</p>
+<p><code>ERR_UNKNOWN</code> exists in the core error space for this purpose, and a device MAY
+use it where it can distinguish an unrecognised opcode from a bad argument. A
+host MUST accept either code as "this device will not do that".</p>
+<h3 id="92-band-reservation">9.2 Band reservation</h3>
+<p>The opcode byte is split into two bands, and the split is what lets one physical
+link carry two conversations:</p>
+<table>
+<thead>
+<tr>
+<th>Band</th>
+<th>Owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code>-<code>0xBF</code></td>
+<td>The device (the product firmware). New commands grow upward within it.</td>
+</tr>
+<tr>
+<td><code>0xC0</code>-<code>0xFF</code></td>
+<td><strong>Reserved to the bridge layer.</strong> A product MUST NOT define a command here.</td>
+</tr>
+</tbody>
+</table>
+<p>A bridge routes on the opcode byte alone: at <code>0xC0</code> and above it answers the
+frame itself, and below <code>0xC0</code> it forwards the original encoded bytes to the
+device untouched. A product command defined at <code>0xC0</code> or above would therefore
+be unreachable whenever a bridge is inline — and the failure is silent. There is
+no error to observe: the bridge consumes the frame and answers it, the device
+never sees it, and the host gets a plausible reply from the wrong device.</p>
+<p>The reservation is one band for the whole layer, not one board's band. Every
+bridge implementation declares the same table.</p>
+<p>Within the device's own band, opcodes are grouped, and a product SHOULD place a
+new command in the group that matches its function:</p>
+<table>
+<thead>
+<tr>
+<th>Base</th>
+<th>Group</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code></td>
+<td>Identity, mode, liveness (§6.1)</td>
+</tr>
+<tr>
+<td><code>0x10</code></td>
+<td>Device control (§6.2)</td>
+</tr>
+<tr>
+<td><code>0x20</code></td>
+<td>Register access (§6.3)</td>
+</tr>
+<tr>
+<td><code>0x30</code></td>
+<td>Text log (§7.1)</td>
+</tr>
+<tr>
+<td><code>0x40</code></td>
+<td>Binary telemetry (§7.2)</td>
+</tr>
+<tr>
+<td><code>0x50</code></td>
+<td>Variables and parameters (§8)</td>
+</tr>
+<tr>
+<td><code>0x60</code></td>
+<td>Display (§6.5)</td>
+</tr>
+<tr>
+<td><code>0x70</code></td>
+<td>Tuning (§6.4)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="93-versioning">9.3 Versioning</h3>
+<p>The <strong>command-set version</strong> is a <code>MAJOR.MINOR.PATCH</code> triple naming this
+standard's opcode map — the whole map, both bands. It is not any firmware's
+build number, and it moves independently of one.</p>
+<ul>
+<li><strong>MAJOR</strong> changes when an existing opcode changes its number or its meaning. A
+  host built against the older table would otherwise reach a different handler
+  and get a plausible answer, which is precisely the failure the version exists
+  to make detectable.</li>
+<li><strong>MINOR</strong> changes when opcodes are added and every existing one still means
+  what it did.</li>
+<li><strong>PATCH</strong> is for changes with no effect on the wire.</li>
+</ul>
+<p>Two different rules use this number, and conflating them is how a real system
+gets refused for a difference that was never a fault.</p>
+<p><strong>Release bookkeeping — a property of a build.</strong> Within one release of one
+implementation, every copy of the command-set version constant MUST carry the
+same value, and every copy MUST move together when it changes. The number is
+duplicated across firmwares and host tools in more than one repository, so the
+copies have to be counted rather than assumed; Part II lists them for the
+products it covers. A release that ships two different values for its own
+command-set version is mis-built. Nothing about this rule is observable on the
+wire.</p>
+<p><strong>Wire compatibility — a property of a link.</strong> Two implementations on one link
+MAY report different command-set versions, and a difference is not by itself a
+fault. A device reporting an older version is stating truthfully which opcode
+table it was built against, which is the fact worth having. A host:</p>
+<ul>
+<li>SHOULD read the far end's version (<code>CMD_GET_VERSION</code> with <code>VER_SEL_CMD_SET</code>,
+  §6.1) before relying on any opcode outside §6.1;</li>
+<li>SHOULD refuse to proceed on a MAJOR difference, because an opcode may have
+  changed number or meaning underneath it and the answers will look plausible;</li>
+<li>MAY proceed on a MINOR or PATCH difference, and SHOULD then confine itself to
+  the opcodes defined by the lower of the two versions. MINOR is additive by
+  definition, so the older end has fewer commands, not different ones.</li>
+</ul>
+<h2 id="10-conformance-checklist">10. Conformance checklist</h2>
+<p>A conforming <strong>device</strong> answers yes to every item below that applies to it.</p>
+<p><strong>When an item does not apply.</strong> Five command groups are optional: register
+access (§6.3), tuning (§6.4), display (§6.5), streaming (§7) and variables and
+parameters (§8). An item that tests a group the device does not implement is
+answered <strong>N/A</strong>, and a device with N/A items is still conforming — provided
+item 25 holds for that group's opcodes, which is what makes "not implemented"
+something a host can observe rather than something it has to be told. No item
+under Transport and framing, Requests and responses, Modes, or items 22, 23,
+24, 25, 26 and 27 is ever N/A: those are required of every device.</p>
+<p><strong>Transport and framing</strong></p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>The serial link is 8 data bits, no parity, one stop bit, no flow control, at the agreed rate.</td>
+<td>2</td>
+</tr>
+<tr>
+<td>2</td>
+<td>No inter-frame gap, break or preamble is required of the host, and back-to-back frames are accepted.</td>
+<td>2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Every frame is COBS-encoded with a trailing <code>0x00</code> delimiter, and <code>0x00</code> is treated as an unconditional frame boundary on receive.</td>
+<td>3.4</td>
+</tr>
+<tr>
+<td>4</td>
+<td>On encode, every complete 254-byte zero-free run is emitted with a <code>0xFF</code> code, no <code>0x00</code> is introduced where none stood, and the final group carries a code byte even when it has no data.</td>
+<td>3.4.1</td>
+</tr>
+<tr>
+<td>5</td>
+<td>On decode, a <code>0x00</code> is restored after every group whose code was not <code>0xFF</code>, and after no other group — including the last one in the frame.</td>
+<td>3.4.2</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>LEN</code> counts <code>CMD</code> + <code>SEQ</code> + payload + CRC, and is checked for equality against the decoded length.</td>
+<td>3.2</td>
+</tr>
+<tr>
+<td>7</td>
+<td>The CRC is CRC-16/CCITT-FALSE and reproduces <code>0x29B1</code> over <code>"123456789"</code>.</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>8</td>
+<td>The CRC covers the decoded frame from the first <code>LEN</code> byte through the last payload byte, and excludes the CRC bytes themselves.</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>9</td>
+<td>A frame failing COBS decode, the CRC check or the <code>LEN</code> check is discarded silently, with no response.</td>
+<td>3.7</td>
+</tr>
+<tr>
+<td>10</td>
+<td>The largest accepted encoded frame is documented, and a longer one is discarded silently like any other frame that cannot be validated.</td>
+<td>3.8</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Requests and responses</strong></p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>11</td>
+<td>Each processed request produces exactly one response, echoing its <code>CMD</code> and its <code>SEQ</code>.</td>
+<td>4.1</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Unsolicited frames carry <code>SEQ = 0</code>.</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>SEQ</code> is never interpreted or validated by the device.</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Every response payload begins with a status byte, and an error response carries an error code in <code>DATA[0]</code>.</td>
+<td>4.2</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Each core error code is used only for the condition §4.3 defines for it, and any product-specific code is at <code>0x10</code> or above.</td>
+<td>4.3, 4.4</td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>ERR_BAD_LEN</code> is used for a short payload and <code>ERR_BAD_ARGS</code> for a bad value, never interchangeably.</td>
+<td>4.3</td>
+</tr>
+<tr>
+<td>17</td>
+<td>A payload longer than the command requires is accepted and its excess ignored, never answered <code>ERR_BAD_LEN</code>.</td>
+<td>4.3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Modes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>18</td>
+<td>The device boots into <code>OPMODE_NORMAL</code>.</td>
+<td>5.1</td>
+</tr>
+<tr>
+<td>19</td>
+<td><code>CMD_SET_MODE</code> is processed in every mode, and an unimplemented mode value is refused with <code>ERR_BAD_ARGS</code>.</td>
+<td>5.1</td>
+</tr>
+<tr>
+<td>20</td>
+<td>In <code>OPMODE_NORMAL</code>, <code>CMD_PING</code>, <code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>, <code>CMD_SET_MODE</code>, <code>CMD_DBG_ONLINE</code> and <code>CMD_RESET</code> are answered, and everything else is dropped silently.</td>
+<td>5.2</td>
+</tr>
+<tr>
+<td>21</td>
+<td>Any non-default mode reverts to <code>OPMODE_NORMAL</code> after <code>ONLINE_TIMEOUT_MS</code> with no accepted frame, unconditionally.</td>
+<td>5.3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Commands</strong></p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22</td>
+<td>Every command in §6.1 is implemented, and answered in every mode.</td>
+<td>6.1</td>
+</tr>
+<tr>
+<td>23</td>
+<td><code>CMD_GET_VERSION</code> implements both <code>VER_SEL_FW</code> and <code>VER_SEL_CMD_SET</code>, echoes the selector it was given, answers <code>ERR_BAD_ARGS</code> for any other, and reports the version of §9.3 under <code>VER_SEL_CMD_SET</code>.</td>
+<td>6.1, 9.3</td>
+</tr>
+<tr>
+<td>24</td>
+<td><code>CMD_RESET</code> responds before resetting.</td>
+<td>6.2</td>
+</tr>
+<tr>
+<td>25</td>
+<td>Outside <code>OPMODE_NORMAL</code>, every opcode the device does not act on is answered <code>[ERR][ERR_BAD_ARGS]</code>, or <code>[ERR][ERR_UNKNOWN]</code> where the device can tell an unrecognised opcode from a bad argument.</td>
+<td>9.1</td>
+</tr>
+<tr>
+<td>26</td>
+<td>No command is defined at <code>0xC0</code> or above.</td>
+<td>9.2</td>
+</tr>
+<tr>
+<td>27</td>
+<td>Every copy of the command-set version constant in the release carries the same value.</td>
+<td>9.3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Streaming</strong> — N/A for a device that implements neither §7.1 nor §7.2.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>28</td>
+<td>Log frames and telemetry frames are emitted with <code>SEQ = 0</code>.</td>
+<td>7</td>
+</tr>
+<tr>
+<td>29</td>
+<td>An unsolicited frame's payload begins with the status byte, and the frame's own content begins at <code>DATA[0]</code>.</td>
+<td>7, 4.2</td>
+</tr>
+<tr>
+<td>30</td>
+<td><code>CMD_LOG_START</code> is acknowledged before logging is armed, and the acknowledgement is queued ahead of any log content.</td>
+<td>7.1</td>
+</tr>
+<tr>
+<td>31</td>
+<td>A burst period or duration outside its permitted range is refused with <code>ERR_BAD_ARGS</code>, not clamped, and <code>BURST_DURATION_MS_INFINITE</code> is accepted.</td>
+<td>7.2</td>
+</tr>
+<tr>
+<td>32</td>
+<td>A burst frame carries one <code>u16</code> per set mask bit, in ascending bit order, and an unwired or unassigned bit reports zero rather than erroring.</td>
+<td>7.2</td>
+</tr>
+<tr>
+<td>33</td>
+<td>A stop or end command is idempotent, echoes the request's <code>SEQ</code> when host-initiated, and is also emitted unsolicited with <code>SEQ = 0</code> when the device ends the session itself.</td>
+<td>6.4, 7.2</td>
+</tr>
+<tr>
+<td>34</td>
+<td>Command dispatch keeps working while a streaming session is active.</td>
+<td>7.2</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Variables and parameters</strong> — N/A for a device that implements neither family.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>35</td>
+<td>An out-of-range identifier is refused with <code>ERR_BAD_ARGS</code>.</td>
+<td>8</td>
+</tr>
+<tr>
+<td>36</td>
+<td>A write to a read-only slot is refused with <code>ERR_BAD_ARGS</code> and stores nothing.</td>
+<td>8</td>
+</tr>
+<tr>
+<td>37</td>
+<td>The device documents the range it accepts for each writable slot, and a value it does not accept is refused with <code>ERR_BAD_ARGS</code> — never clamped, never masked, and never answered OK and discarded.</td>
+<td>8</td>
+</tr>
+<tr>
+<td>38</td>
+<td>A <code>GET</code> after a successful <code>SET</code> of the same slot returns the value that was set.</td>
+<td>8</td>
+</tr>
+<tr>
+<td>39</td>
+<td>Slot numbering is append-only, and any renumbering is accompanied by a MAJOR command-set version change.</td>
+<td>8.1, 9.3</td>
+</tr>
+<tr>
+<td>40</td>
+<td>Where one field is reachable through more than one opcode, those opcodes agree on whether it is writable and on the values they accept for it.</td>
+<td>8.2</td>
+</tr>
+</tbody>
+</table>
+<p>A conforming <strong>host</strong> additionally answers yes to these.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>See</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>41</td>
+<td>It matches responses by <code>SEQ</code>, and does not assume request ordering.</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>42</td>
+<td>It tolerates an unsolicited frame arriving at any time, including between its own request and the matching response.</td>
+<td>2, 7</td>
+</tr>
+<tr>
+<td>43</td>
+<td>It tolerates an unrecognised status byte without losing frame synchronisation.</td>
+<td>4.2</td>
+</tr>
+<tr>
+<td>44</td>
+<td>It reads an unsolicited frame's first payload byte as the status byte, and takes the frame's content from <code>DATA[0]</code>.</td>
+<td>7</td>
+</tr>
+<tr>
+<td>45</td>
+<td>For a frame that arrived corrupt it tolerates both answers: silence from a device, and <code>[ERR][ERR_BAD_CRC]</code> from a bridge or a bootloader.</td>
+<td>3.7</td>
+</tr>
+<tr>
+<td>46</td>
+<td>It does not send a frame larger than the device's documented maximum, and does not establish that maximum by experiment.</td>
+<td>3.8</td>
+</tr>
+<tr>
+<td>47</td>
+<td>It reads the device's identity and command-set version before using any identifier map, and uses that product's own map.</td>
+<td>8.1</td>
+</tr>
+</tbody>
+</table>
+<h1 id="celfras-standard-protocol-part-ii-the-products">Celfras Standard Protocol — Part II: The Products</h1>
+<p>Part I is the standard. This part is the record of what each product did with
+the latitude Part I leaves it: the identifier maps behind §8, the values of the
+constants §3.8 and §5.3 declare product-defined, which optional command groups a
+product implements, and where a product's behaviour departs from what Part I
+asks for.</p>
+<p>Nothing here relaxes anything in Part I, and nothing here is required of a new
+implementation. An appendix states facts about one product at one moment. Where
+such a fact turns out to be needed by <em>every</em> implementer, it belongs in Part I
+and is moved there rather than cited from here.</p>
+<p><strong>What this part carries, and what it does not.</strong> It carries structure:
+identifiers, names, units, access, and what each slot is for. It does not carry
+the numbers a product writes into them. A standard defines what identifier 14
+means; what one product stores there is that product's business, and it is
+carried in this document's internal edition and in the product's own
+documentation. Where that edition adds a column giving each slot's built-in
+value, this one simply does not have it, and no threshold value appears
+anywhere in this text.</p>
+<p>That rule is about the contents of the identifier maps. It is not a rule
+against every number: where Part I requires a device to publish a constant of
+its own so that a host can talk to it at all — the maximum encoded frame of
+§3.8, the link-liveness interval of §5.3 — the value is stated here, because a
+host cannot use the link without it. Read a bare number in this part as one of
+those link constants, never as a threshold out of a map.</p>
+<p>Where this part discusses one slot it names the slot and leaves the number to
+the table above it. The tables are generated from the products themselves; an
+id retyped into a sentence is a second copy of the same fact, and this part
+has already outlived one renumbering (A.2).</p>
+<h2 id="a-cfs-ecig-suite">A. CFS-ECIG-SUITE</h2>
+<p>The reference implementation of Part I, and the product every generated
+identifier table in this document is extracted from.</p>
+<h3 id="a1-what-this-product-implements">A.1 What this product implements</h3>
+<p><strong>Product constants.</strong> Part I defers two of these to Part II:</p>
+<ul>
+<li>The largest accepted encoded frame, delimiter excluded (§3.8), is <strong>32 bytes</strong>
+  on the shipping CWM2032 build. The accumulator is sized per chip within the
+  same firmware, so another chip's build of it is a different number; a host
+  talks to a board, not to a source tree, and this is the board's.</li>
+<li>The link-liveness interval, <code>ONLINE_TIMEOUT_MS</code> (§5.3), is <strong>5000 ms</strong>.</li>
+</ul>
+<p><strong>Optional groups.</strong> It implements text logging (§7.1), binary telemetry
+(§7.2), tuning (§6.4), and both the variable and the parameter family in all
+three widths (§8). It does <strong>not</strong> implement register access (§6.3) or display
+(§6.5): those opcodes are declared in its header but nothing dispatches them, so
+they are answered per §9.1 like any other opcode the device does not act on.</p>
+<p><strong>The §6.2 deviation is this product's.</strong> <code>CMD_ACTIVATE</code>, <code>CMD_DEACTIVATE</code>,
+<code>CMD_START_HEATING</code> and <code>CMD_STOP_HEATING</code> are the stubs Part I §6.2 names: they
+answer <code>[OK]</code> whether or not anything happens. An <code>[OK]</code> from those four opcodes
+is not evidence that the device acted.</p>
+<p><strong><code>CMD_SET_MODE</code> also drives the log parameter here.</strong> Entering
+<code>OPMODE_NORMAL</code> or <code>OPMODE_DEBUG</code> forces the <code>LOG_ENABLE</code> parameter slot of
+A.3 off and on respectively, so the first log line after entering
+<code>OPMODE_DEBUG</code> arrives without a <code>CMD_LOG_START</code>. This was a deliberate choice
+made 2026-07-10, and it is the one behaviour Appendix B contrasts with.</p>
+<h3 id="a2-the-variable-map">A.2 The variable map</h3>
+<p>The 8-bit space:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th></tr></thead><tbody><tr><td>0</td><td>EXT_CTRL_STATUS</td><td>EXT_CTRL_* bits</td></tr><tr><td>1</td><td>EXT_HEATING_PWM_DUTY</td><td>%</td></tr><tr><td>2</td><td>OP_MODE</td><td>OPMODE_*</td></tr><tr><td>3</td><td>STATE</td><td>STATE_E</td></tr><tr><td>4</td><td>OIL_MODE</td><td>heating profile idx</td></tr><tr><td>5</td><td>COIL_SEL</td><td>H_COIL*_MASK</td></tr><tr><td>6</td><td>EVENT_FLAG</td><td>EVENT_MASK_*</td></tr><tr><td>7</td><td>EVENT_TOGGLE_FLAG</td><td>EVENT_MASK_*</td></tr><tr><td>8</td><td>BATTERY_GUAGE</td><td>%</td></tr><tr><td>9</td><td>OIL_GUAGE</td><td>%</td></tr><tr><td>10</td><td>EVENT_EMUL_MASK</td><td>EVENT_MASK_*</td></tr><tr><td>11</td><td>EVENT_EMUL_ENABLE</td><td>0/1</td></tr></tbody></table></div>
+
+<p>The 16-bit space:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th></tr></thead><tbody><tr><td>0</td><td>EXT_HEATING_POWER</td><td>mW (CP) / mV target_vatrms (CV)</td></tr><tr><td>1</td><td>PROT_TYPE</td><td>PROTECT_MASK_*</td></tr><tr><td>2</td><td>CHARGING_TIME</td><td>min</td></tr><tr><td>3</td><td>VAT</td><td>mV</td></tr><tr><td>4</td><td>IAT0</td><td>mA</td></tr><tr><td>5</td><td>PAT0</td><td>mW</td></tr><tr><td>6</td><td>RAT0</td><td>mohm</td></tr><tr><td>7</td><td>DUTY0</td><td>%</td></tr></tbody></table></div>
+
+<p>The 32-bit space:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th></tr></thead><tbody><tr><td>0</td><td>STATE_TIME</td><td>ms</td></tr><tr><td>1</td><td>DISP_TIME</td><td>ms</td></tr><tr><td>2</td><td>ONLINE_ELAPSED</td><td>ms</td></tr><tr><td>3</td><td>HEATING_TIME</td><td>ms</td></tr><tr><td>4</td><td>LED_DAISY_STARTED</td><td>bursts</td></tr><tr><td>5</td><td>LED_DAISY_DONE</td><td>bursts</td></tr></tbody></table></div>
+
+<p>Most of this map is what §8 describes as a read-only view of live firmware
+state: the state machine's current state and its timers, the measurements the
+device is taking, the gauges it is computing. A <code>SET</code> to any of those answers
+<code>ERR_BAD_ARGS</code>.</p>
+<p>Five slots are writable, and every one of them is an <strong>input</strong> the host supplies
+in place of something the firmware would otherwise read off its own hardware —
+never a second copy of the device's control state. The production control code
+then runs unmodified rather than growing host-only branches.</p>
+<ul>
+<li><code>EXT_CTRL_STATUS</code>, <code>EXT_HEATING_PWM_DUTY</code> and <code>EXT_HEATING_POWER</code> are an
+  external-control interface; what its bits mean, what each slot accepts, and
+  what a host must do while driving it are in the product's own documentation,
+  not here.</li>
+<li><code>EVENT_EMUL_MASK</code> and <code>EVENT_EMUL_ENABLE</code> let a host stand in for the
+  device's own event inputs. Both accept the full width of their slot.</li>
+</ul>
+<p>Three further facts a host needs before it trusts a reading:</p>
+<ul>
+<li><strong>The 16-bit map's measurement half assumes one heating coil.</strong> The per-coil
+  slots are named for coil 0 because this board has only that one; a two-coil
+  board appends its coil-1 slots after them rather than renumbering these.</li>
+<li><strong>A slot may read zero rather than a measurement, depending on the build.</strong>
+  <code>RAT0</code> has no current-sense channel to read on a constant-voltage build, and
+  <code>DISP_TIME</code> has no per-state timeline on a daisychain display build. Zero
+  there means <em>not wired in this build</em>, exactly as it does for an unwired
+  telemetry bit (§7.2); it is not a reading of zero.</li>
+<li><strong>The variable numbering happens to be the same on the boards built so far,
+  and that is a coincidence rather than a guarantee.</strong> §8.1 applies to this
+  map exactly as it applies to the parameter map: the agreement is an accident
+  of history, it promises nothing about the next board, and it makes nothing
+  safe. A host still establishes which product it is talking to before it uses
+  either map.</li>
+</ul>
+<p>This map was renumbered once, on 2026-07-29, when the external-control block was
+inserted at the front of the 8-bit and 16-bit spaces instead of being appended.
+That predates the command-set numbering of Appendix E, so no version difference
+marks it; the append-only rule of §8.1 has held since, and an older copy of the
+map addresses the wrong slots.</p>
+<h3 id="a3-the-parameter-map">A.3 The parameter map</h3>
+<p>The 8-bit space:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th><th>Access</th></tr></thead><tbody><tr><td>0</td><td>LOG_ENABLE</td><td>0/1</td><td>rw</td></tr></tbody></table></div>
+
+<p>The 16-bit space:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th><th>Access</th></tr></thead><tbody><tr><td>0</td><td>VDD</td><td>mV</td><td>ro</td></tr><tr><td>1</td><td>VAT0</td><td>mV</td><td>ro</td></tr><tr><td>2</td><td>IAT0</td><td>mA</td><td>ro</td></tr><tr><td>3</td><td>LED_BREATH_PERIOD_MS</td><td>ms</td><td>rw</td></tr><tr><td>4</td><td>UVLO_HEAT_INIT_TH</td><td>mV</td><td>rw</td></tr><tr><td>5</td><td>UVLO_HEAT_TH</td><td>mV</td><td>rw</td></tr><tr><td>6</td><td>LONG_PUFF_TH</td><td>ms</td><td>rw</td></tr><tr><td>7</td><td>CHG_OVP_TH</td><td>mV</td><td>rw</td></tr><tr><td>8</td><td>CHG_TIMEOUT_TH</td><td>min</td><td>rw</td></tr><tr><td>9</td><td>SHORT_COIL1_TH</td><td>mV</td><td>rw</td></tr><tr><td>10</td><td>SHORT_COIL2_TH</td><td>mV</td><td>ro</td></tr><tr><td>11</td><td>SHORT_COIL_RST_TH</td><td>mV</td><td>rw</td></tr><tr><td>12</td><td>OPEN_COIL1_TH</td><td>mV</td><td>rw</td></tr><tr><td>13</td><td>OPEN_COIL2_TH</td><td>mV</td><td>ro</td></tr><tr><td>14</td><td>DRY_PUFF_ABS_TEMP_TH</td><td>degC</td><td>rw</td></tr><tr><td>15</td><td>DRY_PUFF_REL_SLOPE_TH</td><td>degC/sec</td><td>rw</td></tr></tbody></table></div>
+
+<p>The 32-bit space:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th><th>Access</th></tr></thead><tbody><tr><td>0</td><td>HEATING_TIMEOUT_TH</td><td>ms</td><td>rw</td></tr></tbody></table></div>
+
+<p><strong>These numbers are this product's, and they are not portable.</strong> This is the
+most consequential fact in Part II, and §8.1 states the rule behind it. Every
+board numbers its own parameter enumeration independently, so the same id
+addresses a different field on a different product — and nothing detects it. A
+host pointed at the wrong board reads the wrong measurement and, worse, writes
+the wrong threshold: the firmware performs that write and answers <strong>OK</strong>. There
+is no error at any layer, no checksum that disagrees, and nothing in a log to
+find afterwards. The only defence is the one §8.1 requires — read the identity
+and the command-set version first, and use that product's own map.</p>
+<p><strong>Most writable slots are open only in a tuning build.</strong> The protection
+thresholds — every <code>rw</code> slot in the 16-bit and 32-bit maps except
+<code>LED_BREATH_PERIOD_MS</code> — write the device's parameter block, and that block is
+<code>const</code> in a release build. There, each of them answers <code>ERR_BAD_ARGS</code> instead
+of storing. That is the intended behaviour of a shipping unit, not a fault and
+not a regression: a release build is one in which the thresholds are what the
+product was calibrated to. The tables above give each slot's access in the
+tuning build, which is the one whose map is worth documenting. Two writable
+slots are unaffected because they do not touch the parameter block at all:
+<code>LOG_ENABLE</code> and <code>LED_BREATH_PERIOD_MS</code> route through a service call and stay
+writable in every build.</p>
+<p><strong>Two slots are reserved for a second heating coil this board does not have.</strong>
+<code>SHORT_COIL2_TH</code> and <code>OPEN_COIL2_TH</code> are declared so that the numbering already
+matches a two-coil build. They read zero and reject every write, in every build
+— that is not the tuning-build effect above, and selecting a tuning build does
+not open them.</p>
+<p>Four smaller facts about individual slots:</p>
+<ul>
+<li><code>SHORT_COIL1_TH</code> and <code>OPEN_COIL1_TH</code> are a pair, and the firmware compares
+  them against each other rather than each against a fixed bound: both are
+  tested against the same measured drop, the open-coil fault below one
+  threshold and the short-coil fault above the other. Their ordering is
+  therefore a constraint on what a host may write — the short-coil threshold
+  MUST stay above the open-coil one. Crossed over, the healthy band between
+  them becomes a band in which both faults trip at once, so crossing them
+  disables coil detection instead of tightening it.</li>
+<li><code>CHG_OVP_TH</code> and <code>SHORT_COIL_RST_TH</code> are readable and writable, but nothing
+  currently compares against them — one is a divider reading whose compare is
+  disabled, the other belongs to a protection detected by other means. They are
+  kept for numbering stability, and writing them changes nothing today.</li>
+<li><code>LED_BREATH_PERIOD_MS</code> <strong>accepts a zero it does not store</strong>: zero would divide
+  by zero in the display ramp, so the setter returns early while the command
+  still answers <code>[OK]</code>, and a <code>GET</code> afterwards returns the previous value. That
+  is a departure from §8's read-back rule, recorded here rather than smoothed
+  over. Its accepted range is one and above, and a new implementation MUST
+  answer <code>ERR_BAD_ARGS</code> for the zero rather than copy this.</li>
+<li><code>LOG_ENABLE</code> <strong>stores something other than what it was given</strong>: its setter
+  reduces any non-zero value to one, and the command answers <code>[OK]</code> regardless.
+  A <code>SET</code> of any non-zero value is therefore answered OK, and a <code>GET</code>
+  afterwards returns one. That is the masking §8 forbids, and it is the same
+  defect as the slot above seen from the other side — a setter with no way to
+  report a refusal to the layer that composes the response, so the response
+  says OK. Its accepted range is zero and one, and a new implementation MUST
+  answer <code>ERR_BAD_ARGS</code> for anything else rather than copy this. The two are
+  one defect with two instances, and are recorded on this product's own defect
+  list as one entry rather than as two unrelated quirks.</li>
+</ul>
+<p>Apart from those two, a writable parameter slot accepts the full width of its
+slot: the firmware range-checks the identifier, not the value. Where a value
+has to be sane for the device to behave, that constraint is the product's, and
+it is in the product's own documentation.</p>
+<h3 id="a4-telemetry-fields">A.4 Telemetry fields</h3>
+<p>Part I §7.2 fixes which bit is which quantity and leaves two things to the
+product: the scale behind each field, and which bits are wired to a real reading
+at all. On this product every field is a <code>u16</code>, and the scales are:</p>
+<ul>
+<li><code>LOG_FIELD_VDD</code>, <code>LOG_FIELD_VAT</code> — millivolts.</li>
+<li><code>LOG_FIELD_IAT</code> — milliamperes.</li>
+<li><code>LOG_FIELD_PWR</code> — milliwatts, derived from the measured load voltage and
+  current and the drive's duty cycle rather than measured directly.</li>
+<li><code>LOG_FIELD_DUTY</code> — percent.</li>
+<li><code>LOG_FIELD_RAT</code> — milliohms, computed by the device rather than measured.</li>
+<li><code>LOG_FIELD_PROT</code> — a bitfield of the device's protection status, not a scaled
+  quantity.</li>
+</ul>
+<p>Wired to a real reading: <code>VDD</code>, <code>VAT</code>, <code>IAT</code>, <code>PWR</code>, <code>DUTY</code>, and <code>RAT</code> on a
+constant-power build with dry-puff support. <code>PROT</code> is not wired, and <code>RAT</code> reads
+zero on a constant-voltage build, which has no current-sense channel to compute
+it from. An unwired bit is still accepted and still occupies its <code>u16</code> in the
+frame, reporting zero, exactly as §7.2 requires.</p>
+<h3 id="a5-tuning-identifiers">A.5 Tuning identifiers</h3>
+<p>Part I §6.4 fixes the session shape and leaves the identifiers to the product.
+This one defines four, and <code>CMD_TUNING_START</code> refuses an identifier the running
+build does not support with <code>ERR_BAD_ARGS</code>:</p>
+<ul>
+<li><code>TUNING_ID_CV_VATRMS</code> (0) — sweeps the constant-voltage drive target.
+  Constant-voltage builds only.</li>
+<li><code>TUNING_ID_BATTERY_GAUGE</code> (1) — sweeps the battery gauge's voltage divisions.
+  It is defined over a discharge phase and a charge phase, and <strong>the shipping
+  firmware runs only the charge phase.</strong> Which phase a session takes is decided
+  by the device, from whether a charger is actually present; with none present
+  the session would be a discharge sweep, and <code>CMD_TUNING_START</code> refuses the
+  identifier outright with <code>ERR_NOT_READY</code>. The refusal is deliberate: the
+  discharge sweep's frames would report the voltage under load rather than the
+  cell's own, so the sweep would return numbers that look like a calibration
+  and are not, and refusing is the honest answer. The cause is a regression in
+  this product's measurement path and is recorded on its own defect list. This
+  refusal is not the staging refusal below — it does not depend on anything the
+  host staged — and it shares only its error code.</li>
+<li><code>TUNING_ID_PROTECT_THRESH</code> (2) — sweeps the short-coil and open-coil
+  resistance thresholds.</li>
+<li><code>TUNING_ID_DRYPUFF</code> (3) — sweeps the dry-puff temperature and slope
+  thresholds. Constant-power builds with dry-puff support only.</li>
+</ul>
+<p>A session runs the real production control algorithm through the same
+external-control input path as A.2, so a host stages the stimulus before
+starting one; the staging belongs with that interface, in the product's own
+documentation. <code>CMD_TUNING_START</code> refuses a session whose staged stimulus could
+produce no measurement, with <code>ERR_NOT_READY</code>, rather than running to completion
+and reporting nothing.</p>
+<p>One identifier also constrains the requested report period. A battery-gauge
+session reports once per cycle of its own fixed sample cadence, so the period
+has nothing left to control: <code>CMD_TUNING_START</code> refuses any other value with
+<code>ERR_BAD_ARGS</code> instead of accepting it and reporting at a different rate, since
+a host that asked for one period and silently got another would misread every
+gap between timestamps. The cadence itself is a constant of this product and is
+stated with the product's own documentation. No other identifier constrains the
+period beyond what §6.4 requires.</p>
+<p><strong>What the index tuple means.</strong> §6.4 leaves the meaning of
+<code>CMD_SET_TUNING_PAR</code>/<code>CMD_GET_TUNING_PAR</code>'s indices to the product. Here the
+<code>tuning_id</code> selects the calibration table and the remaining indices address a
+cell in it; an identifier uses only the indices its own table has dimensions
+for, and every index it uses is bounds-checked against the real dimension, a
+violation answering <code>ERR_BAD_ARGS</code> as §6.4 requires. No session is needed for
+either command.</p>
+<ul>
+<li><code>TUNING_ID_CV_VATRMS</code> is the only one that uses the whole tuple: <code>coil_idx</code>
+  the heating coil, <code>heating_mode</code> the drive mode, <code>heater_type</code> the fitted
+  heater, <code>step</code> the target-voltage step.</li>
+<li><code>TUNING_ID_BATTERY_GAUGE</code> uses <code>coil_idx</code> as the <strong>charge direction</strong> —
+  discharging or charging, not a physical coil — and <code>step</code> as the gauge
+  division.</li>
+<li><code>TUNING_ID_PROTECT_THRESH</code> uses <code>coil_idx</code> as the heating coil and <code>step</code> to
+  select which of the pair is addressed, the short-coil threshold or the
+  open-coil one.</li>
+<li><code>TUNING_ID_DRYPUFF</code> uses <code>step</code> to select the absolute-temperature threshold
+  or the slope threshold; these are not per-coil, but <code>coil_idx</code> is still
+  checked against the coil count, so a host naming a coil that does not exist is
+  told rather than served.</li>
+</ul>
+<p>An index an identifier does not use is ignored rather than required to be zero,
+and is not range-checked. A host SHOULD send zero for it, because a product that
+later gives that dimension a meaning will start checking it.</p>
+<p><strong>Which protections a session suspends</strong> — the disclosure §6.4 requires:
+long-puff and heating-timeout protection are suspended whenever the host is
+driving the heating trigger, which covers plain external control as well as a
+tuning session; charge-timeout protection is suspended for the duration of a
+battery-gauge session, because charging across the cell's range is that
+measurement; and the coil-resistance check is suspended for a protect-threshold
+session, which is the sweep that has to reach the values the check exists to
+refuse. Under-voltage lockout and charge over-voltage protection stay live
+throughout. A host that relied on the long-puff or heating-timeout protection to
+end an over-long externally driven heating request does not have that backstop.</p>
+<p>One of those suspensions does not reach as far as it reads. Suspending the
+coil-resistance check suspends the check the device runs <em>while</em> heating, and
+not the one it runs at heating <em>start</em>: that one raises an open-coil fault
+directly from a pin reading, with nothing in its path that the suspension
+touches. So a protect-threshold session on a load the check would refuse can
+still be stopped at heating start — the exact case the suspension exists to
+permit. It is recorded on this product's own defect list, and a product that
+discloses a suspension SHOULD make it reach every check the disclosure covers.</p>
+<p>One inconsistency on this product's protocol surface is worth stating, because
+it is host-visible: on a constant-voltage tuning build the two dry-puff
+threshold slots are writable through <code>CMD_PAR16_SET</code>, which answers <code>OK</code>, and
+refused by <code>CMD_SET_TUNING_PAR</code>, which answers <code>ERR_BAD_ARGS</code> on the correct
+reasoning that nothing reads them in that build. Two opcodes, one field,
+opposite answers. That is a departure from §8.2, which requires two opcodes
+reaching one field to agree about whether it is writable. It is a
+protocol-surface inconsistency only — the field exists either way — and it is
+recorded, not yet resolved.</p>
+<h2 id="b-cvs-bp2601">B. CVS-BP2601</h2>
+<p>A second product on the same standard. Its identifier maps are its own and are
+held with that product; §8.1 applies to them in full, and Appendix A must not be
+read as describing them.</p>
+<p>Exactly one difference from Appendix A is on record, and it is the one A.1 sets
+up. <strong><code>CMD_SET_MODE</code> on CVS-BP2601 does not touch the log-enable parameter.</strong>
+Entering <code>OPMODE_DEBUG</code> there leaves logging off until an explicit
+<code>CMD_LOG_START</code>, where CFS-ECIG-SUITE forces it off and on with the mode. Both
+behaviours conform — §5 defines what a mode is for and does not tie a parameter
+slot to it — so a host that wants log output from either product asks for it
+explicitly rather than inferring it from the mode it selected. The
+CFS-ECIG-SUITE behaviour was a deliberate choice made in that project on
+2026-07-10 and has not been back-ported.</p>
+<h2 id="c-the-bridge-layer">C. The bridge layer</h2>
+<p>The bridge is the relay of §1.3, and §9.2 already states the rule from the
+device's side: <code>0xC0</code> and above belongs to this layer, a product must not define
+a command there, and a bridge routes on the opcode byte alone. This appendix is
+the table that rule reserves the band for.</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody><tr><td>0xC0</td><td>CMD_B_PING</td></tr><tr><td>0xC1</td><td>CMD_B_INFO</td></tr><tr><td>0xC2</td><td>CMD_B_GET_CAPS</td></tr><tr><td>0xC3</td><td>CMD_B_GET_STATS</td></tr><tr><td>0xC4</td><td>CMD_B_GET_SNAPSHOT</td></tr><tr><td>0xC5</td><td>CMD_SET_SWD_SPEED</td></tr><tr><td>0xC6</td><td>CMD_SET_TARGET</td></tr><tr><td>0xC7</td><td>CMD_B_GET_VERSION</td></tr><tr><td>0xC8</td><td>CMD_MODE_DEBUG</td></tr><tr><td>0xC9</td><td>CMD_MODE_DOWNLOAD</td></tr><tr><td>0xCA</td><td>CMD_MODE_RAW</td></tr><tr><td>0xCB</td><td>CMD_MODE_BRIDGE_RESET</td></tr><tr><td>0xCC</td><td>CMD_TGT_NRST</td></tr><tr><td>0xCD</td><td>CMD_TGT_POWER</td></tr><tr><td>0xCE</td><td>CMD_BRIDGE_CONF</td></tr><tr><td>0xD0</td><td>CMD_SWD_CONNECT</td></tr><tr><td>0xD1</td><td>CMD_SWD_DISCONNECT</td></tr><tr><td>0xD2</td><td>CMD_SWD_LINE_RESET</td></tr><tr><td>0xD3</td><td>CMD_SWD_JTAG2SWD</td></tr><tr><td>0xD4</td><td>CMD_SWD_READ_IDCODE</td></tr><tr><td>0xD7</td><td>CMD_SWD_CONNECT_UNDER_RESET</td></tr><tr><td>0xD8</td><td>CMD_DP_READ</td></tr><tr><td>0xD9</td><td>CMD_DP_WRITE</td></tr><tr><td>0xDA</td><td>CMD_AP_READ</td></tr><tr><td>0xDB</td><td>CMD_AP_WRITE</td></tr><tr><td>0xE0</td><td>CMD_CORE_HALT</td></tr><tr><td>0xE1</td><td>CMD_CORE_RESUME</td></tr><tr><td>0xE2</td><td>CMD_CORE_STATUS</td></tr><tr><td>0xE3</td><td>CMD_CORE_SYSRESET</td></tr><tr><td>0xE4</td><td>CMD_CORE_RUN_DETACH</td></tr><tr><td>0xE8</td><td>CMD_UPD_BEGIN</td></tr><tr><td>0xE9</td><td>CMD_UPD_DATA</td></tr><tr><td>0xEA</td><td>CMD_UPD_END</td></tr><tr><td>0xEB</td><td>CMD_UPD_STATUS</td></tr><tr><td>0xEC</td><td>CMD_UPD_ABORT</td></tr><tr><td>0xED</td><td>CMD_UPD_APPLY</td></tr><tr><td>0xF0</td><td>CMD_FLASH_ERASE_4K</td></tr><tr><td>0xF1</td><td>CMD_FLASH_PROG_PAGE_128</td></tr><tr><td>0xF2</td><td>CMD_FLASH_PROG_PAGE_128_VERIFY</td></tr><tr><td>0xF3</td><td>CMD_FLASH_READ</td></tr><tr><td>0xF4</td><td>CMD_FLASH_MASS_ERASE</td></tr><tr><td>0xF5</td><td>CMD_FLASH_READ_EX</td></tr><tr><td>0xF8</td><td>CMD_OB_READ</td></tr><tr><td>0xF9</td><td>CMD_OB_WRITE</td></tr><tr><td>0xFA</td><td>CMD_OB_LAUNCH</td></tr><tr><td>0xFB</td><td>CMD_OB_WRITE_AND_LAUNCH</td></tr></tbody></table></div>
+
+<p>Read it as one layer's table, not one board's. Two bridge boards are in service;
+they differ in performance, not in what they answer, and both declare this
+table. That is what makes §9.2's reservation a reservation rather than a
+per-board convention.</p>
+<p>Four things a host should know before using it:</p>
+<ul>
+<li><strong>Some entries are reserved without a handler</strong>, and the table does not mark
+  which. Whether an opcode has one is a property of the image that answers, not
+  of the band's table: it changes with the firmware version, and a bootloader
+  answers far fewer opcodes than an application. A reserved opcode is answered
+  <code>ERR_BAD_ARGS</code> like any other unimplemented one (§9.1), so a host probes for
+  one rather than reading a version first.</li>
+<li><strong><code>CMD_UPD_*</code> (<code>0xE8</code>-<code>0xED</code>) update the bridge itself, and only its
+  bootloader answers them.</strong> They are not the <code>CMD_FLASH_*</code> block, which
+  programs the <em>device</em> behind the bridge. Confusing the two is a mistake with
+  no protocol-level defence: both blocks are in this same band and both answer
+  plausibly. Their shapes are: <code>CMD_UPD_BEGIN</code> takes a fixed 512-byte image
+  header and answers <code>[OK][chunk_max u16][capacity u32]</code>; <code>CMD_UPD_DATA</code> takes
+  <code>[off u32][data]</code>, at most 256 data bytes and never more than the <code>chunk_max</code>
+  just returned, and answers <code>[OK][next_off u32]</code>; <code>CMD_UPD_STATUS</code> takes no
+  payload and answers <code>[OK]</code> followed by a fixed 18-byte status block, whose
+  field layout is the bridge's own and is documented with it; and
+  <code>CMD_UPD_END</code>, <code>CMD_UPD_ABORT</code> and <code>CMD_UPD_APPLY</code> take no payload and answer
+  <code>[OK]</code>, the board copying the image and resetting itself after it has answered
+  <code>CMD_UPD_APPLY</code>. Those sizes are wire constants of this block, the same on
+  every bridge board.</li>
+<li><strong><code>CMD_BRIDGE_CONF</code> is one opcode for many settings</strong>, keyed by a parameter
+  byte, because the band has few free numbers and a toggle should not consume
+  one. An unknown parameter is answered <code>ERR_BAD_ARGS</code>, which is how a host
+  detects support for a setting without reading a version.</li>
+<li><strong><code>CMD_B_PING</code> and <code>CMD_B_INFO</code> exist because the device's own <code>CMD_PING</code> and
+  <code>CMD_INFO</code> cannot say who answered.</strong> Both layers answer those the same way,
+  so a host confirming that the <em>bridge</em> is there asks in the bridge's own band.</li>
+</ul>
+<p>The bridge's version command carries its own selector space, as §6.1 warns: the
+same selector number means something different from the device's. Besides a
+firmware version it answers the running image's <strong>role</strong>, which distinguishes
+the application from the bootloader — the first thing a host should ask, since a
+firmware version alone does not say which image produced it — and the board's
+<strong>hardware identity</strong>, which is the one selector whose answer must be the same
+from either image, because the hardware does not change when the image does.</p>
+<p>The role selector is also where a host learns what to expect from the
+command-set selector. A bridge bootloader answers that selector with its own
+number, deliberately frozen below the application's: it names the last revision
+that changed the handful of opcodes the bootloader itself implements, and it
+does not move when the application's number does. A host that has just read the
+role and found a bootloader should expect the next command-set version it reads
+to be lower, and MUST NOT treat the difference as a fault or as a mis-built
+release. §9.3's release-bookkeeping rule is about the copies of one image's
+constant, and the bootloader is a different image.</p>
+<p>The bridge's error codes live in the extension space of §4.4, which names their
+blocks. One shape is worth adding here: every <code>ERR_UPD_*</code> code carries a <code>u32</code>
+detail after the code byte, because the useful question on a bench is not
+whether an update failed but at which offset, which address, or which check.</p>
+<h2 id="d-dut-test-firmwares">D. DUT test firmwares</h2>
+<p>Three small firmwares exist so that a bridge always has a conforming device to
+talk to, one for each chip a bridge is used against: <strong>CWM2032</strong>, <strong>CWM1016</strong>
+and <strong>CWM0508</strong>. They are test targets, not products, and ship in nothing.</p>
+<p>Each implements exactly the six opcodes §5.2 requires to be answered in
+<code>OPMODE_NORMAL</code> — <code>CMD_PING</code>, <code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>, <code>CMD_SET_MODE</code>,
+<code>CMD_DBG_ONLINE</code> and <code>CMD_RESET</code> — and nothing else, and each declares the same
+command-set version as the products do, for the reason §9.3 gives: the version
+names the opcode table, not the size of the implementation behind it. A device
+that implements six opcodes and answers the rest per §9.1 is as conforming as
+one that implements them all.</p>
+<h2 id="e-command-set-change-history">E. Command-set change history</h2>
+<p>One version number covers both bands (§9.3). It is duplicated across every
+place in this list:</p>
+<ul>
+<li>the CFS-ECIG-SUITE firmware, and its host tool;</li>
+<li>each of the two bridge firmwares, each of those two boards' build-metadata
+  files, and the bridge host tool;</li>
+<li>each of the three test firmwares of Appendix D.</li>
+</ul>
+<p>None of them is authoritative over the others; a release in which they disagree
+is mis-built, which is the release-bookkeeping rule §9.3 states. The list is the
+fact, and no total is written beside it: §9.3 says these copies have to be
+counted rather than assumed, and a total written next to a list is a second
+thing to keep true — it is the one that rots, and it would rot again the next
+time a board is added. Count the list.</p>
+<p>Two things carry the same constant and are deliberately not in it. A frozen
+reference tree carries it because it is a comparison snapshot, not a product.
+The bridge bootloaders carry a number of their own, frozen and lower, for the
+reason Appendix C gives.</p>
+<p>Every entry below is derived from the history of those copies rather than from a
+changelog kept for the purpose, and each names what changed on the wire.</p>
+<ul>
+<li><strong>2.0.0</strong> (2026-08-21) — the number itself. Both layers began declaring a
+  command-set version together. <code>CMD_GET_VERSION</code> (<code>0x05</code>) was added on the
+  device side and <code>CMD_B_GET_VERSION</code> (<code>0xC7</code>) on the bridge side, and the
+  bridge's two configuration commands moved below its SWD gate, where they
+  belong, since neither drives an SWD pin.</li>
+<li><strong>2.1.0</strong> (2026-08-26) — <code>CMD_FLASH_READ</code> (<code>0xF3</code>) went from reserved to
+  implemented.</li>
+<li><strong>2.2.0</strong> (2026-08-26) — the bridge self-update block <code>CMD_UPD_*</code>
+  (<code>0xE8</code>-<code>0xED</code>), bootloader-only, with its <code>ERR_UPD_*</code> error codes; a version
+  selector for the running image's role; and <code>CMD_MODE_BRIDGE_RESET</code> (<code>0xCB</code>)
+  from reserved to implemented.</li>
+<li><strong>2.3.0</strong> (2026-08-27) — <code>CMD_BRIDGE_CONF</code> (<code>0xCE</code>), one opcode carrying
+  runtime settings as a parameter/value pair instead of an opcode per setting.</li>
+<li><strong>2.4.0</strong> (2026-08-30) — a hardware-identity selector on the bridge's version
+  command, answering board identity and revision from either image. Until then
+  the only way to tell two bridge boards apart was free text.</li>
+<li><strong>2.5.0</strong> (2026-08-30) — core halt and core resume were given their own error
+  codes instead of borrowing a flash one, which had cost bench time (§4.4).</li>
+<li><strong>2.6.0</strong> (2026-09-01) — an option-byte mask bit named in the bridge's
+  option-byte commands.</li>
+<li><strong>2.7.0</strong> (2026-09-03) — a bridge configuration key for working with a target
+  whose reset line is not wired.</li>
+<li><strong>2.8.0</strong> (2026-09-04) — a bridge configuration key selecting the SWD pin
+  swap.</li>
+<li><strong>2.9.0</strong> (2026-09-04) — the pin-map configuration key, the first whose value
+  carries meaning rather than being a flag, together with the host-side fix that
+  stopped flattening configuration values to zero or one — which would have sent
+  that key's second value as its first. The bridge would then have selected the
+  first map and echoed back the value it had actually received, so the reply
+  agreed with the frame that arrived, and nothing on the wire would have shown
+  that the host had asked for the other map.</li>
+<li><strong>2.10.0</strong> (2026-09-08) — <code>CMD_FLASH_READ_EX</code> (<code>0xF5</code>), a read that also
+  returns the fault count the plain read cannot report.</li>
+<li><strong>2.11.0</strong> (2026-09-09) — current. Writes to <code>CMD_TGT_POWER</code> were placed
+  behind a bridge configuration key, so a board able to supply its target's
+  power does not do so by default.</li>
+</ul>
+<p><strong>Where the record runs out.</strong> It runs out below 2.0.0, and there is nothing to
+recover: the command-set version was introduced on 2026-08-21 already numbered
+2.0.0, and no implementation ever declared a 1.x. The <code>v1.x</code> numbers that appear
+in the reference firmware's own protocol document are that document's own
+revision numbers, and they are not command-set versions; reading them as earlier
+entries in this list would be a mistake. They are not empty, though. That
+document bumps its number when a wire-visible change lands — a command added,
+removed or renumbered, a frame layout changed, a default behaviour changed — and
+not for internal implementation changes, and its <code>v1.0</code> through <code>v1.5</code> entries
+record real ones: a log opcode moved, the burst payload was reordered, an
+operating mode was retired, the default mode's answer to an unknown command
+changed from an error to silence, and a tuning command's payload grew a leading
+field. They describe wire changes on one product that predate the command-set
+numbering entirely.</p>
+<p>Two properties of the list are worth stating plainly. Every bump since 2.0.0 has
+been MINOR, and every one of them landed in the bridge band: the device band has
+not changed since 2.0.0, which is why a device built against 2.0.0 and a host
+built against 2.11.0 still agree about every opcode the device has. That is a
+statement about the numbered range and about nothing earlier — the device band
+was renumbered repeatedly in the weeks before the numbering began, as the <code>v1.x</code>
+entries above record, which is part of why the numbering exists.
+And not every bump is a wire change — 2.9.0 is partly host-side bookkeeping —
+because the rule of §9.3 is that every copy in the list above moves together,
+not that each increment adds an opcode.</p></main>
+</body>
+</html>

@@ -1,0 +1,1689 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Celfras Standard Protocol V2.11.0</title>
+<style>
+:root { --font-body: "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+@page { size: A4; margin: 20mm 16mm 18mm; }
+body { font-family: var(--font-body); font-size: 10.5pt; line-height: 1.55;
+       color: #1b1b1b; margin: 0; }
+main { max-width: 52rem; margin: 0 auto; padding: 0 1rem 4rem; }
+h1, h2, h3 { line-height: 1.25; }
+h2 { border-bottom: 1px solid #ddd; padding-bottom: .3rem; margin-top: 2.2rem; }
+code, pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: .92em; }
+pre { background: #f6f7f9; padding: .8rem 1rem; border-radius: 4px;
+      overflow-x: auto; }
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9em; }
+th, td { border: 1px solid #d0d4da; padding: .35rem .6rem;
+         text-align: left; vertical-align: top; }
+th { background: #f2f4f7; }
+tr, table { page-break-inside: auto; }
+h2, h3 { page-break-after: avoid; }
+.cover { page-break-after: always; padding-top: 32vh; text-align: center; }
+.cover h1 { font-size: 2.4rem; margin: 0; }
+.cover .ver { font-size: 1.3rem; color: #555; }
+.badge-internal { margin-top: 2rem; color: #a1160a; font-weight: 700;
+                  letter-spacing: .06em; }
+
+/* Web relies on .tw's horizontal scrollbar to keep the generated opcode and
+   par/var tables usable; a printed page (or print-to-PDF) has no scrollbar,
+   so anything wider than the page is silently clipped at the edge instead.
+   Make wide tables fit on paper without touching the web layout above. */
+@media print {
+  .tw { overflow: visible; }
+  table { font-size: .72em; }
+  th, td { overflow-wrap: anywhere; }
+}
+
+</style>
+</head>
+<body class="web">
+
+<main><h1 id="celfras-standard-protocol">Celfras Standard Protocol —— 第一部分:标准</h1>
+<p>本部分规定每一款 Celfras 产品都实现的线路协议(wire protocol):字节在链路
+上如何成帧、请求如何被应答、核心命令有哪些,以及一个实现要做到什么才算符合
+本标准。本部分是自洽的。仅依据本部分即可编写设备端或主机端实现,无需接触任
+何产品的源代码。</p>
+<p>第二部分是记录,不是要求。它记载各款产品如何填充本标准留给产品自行决定的部
+分——标识符映射表、可选命令组、各层自有的错误码。第二部分中没有任何内容放宽
+第一部分的任何要求。</p>
+<h2 id="1">1. 范围</h2>
+<h3 id="11">1.1 本部分规定的内容</h3>
+<ul>
+<li>符合本标准的链路所运行的传输层(§2)。</li>
+<li>帧格式、其 COBS 编码、其完整性校验,以及接收方的校验规则(§3)。</li>
+<li>请求/响应模型、状态字节,以及核心错误码空间(§4)。</li>
+<li>工作模式,以及每种模式下会被应答的命令(§5)。</li>
+<li>核心命令集与各标准化命令组(§6、§7、§8)。</li>
+<li>操作码空间、其中被保留的部分,以及产品如何扩展它(§9)。</li>
+<li>符合性检查表(§10)。</li>
+</ul>
+<h3 id="12">1.2 本部分刻意不规定的内容</h3>
+<p>产品之间可以合理存在差异的一切内容:变量命令与参数命令背后的标识符映射表
+(§8)、遥测字段位中哪些承载真实读数(§7.2)、调校标识符的含义(§6.4),
+以及产品固化的每一个门限值。此外还明确包括传输层的<em>实现</em>——参见 §2。</p>
+<h3 id="13">1.3 角色</h3>
+<p><strong>主机(host)</strong> —— PC 侧工具。它发出请求,并消费响应与非请求帧。</p>
+<p><strong>设备(device)</strong> —— 产品固件。它应答请求,并可发出非请求帧。</p>
+<p><strong>桥接器(bridge)</strong> —— 可选的中继,串接在同一条链路上。它应答保留给自己的
+操作码(§9.2),并把其余一切原封不动地转发给设备。对符合本标准的主机和设备
+而言,桥接器是透明的。只有一条规则对它不同,且仅此一条:桥接器不应转发校验
+未通过的帧,并可对这样的帧作出应答,而不是静默丢弃(§3.7)。</p>
+<p>一条链路上恰好有一个主机和一个设备参与。桥接器若存在,不改变任一方向上的帧
+格式。</p>
+<h3 id="14">1.4 要求用语</h3>
+<p><strong>应</strong> —— 本标准的绝对要求。违反其中任何一条的实现即不符合本标准。
+<strong>不应</strong> —— 本标准的绝对禁止。违反其中任何一条的实现即不符合本标准。
+<strong>宜</strong> —— 只有在给出理由时才可以偏离的要求;偏离的产品在第二部分中记录该偏离。
+<strong>可</strong> —— 真正可选。</p>
+<p>本文中"应""不应""宜""可"四个词只按以上含义使用,承载规范效力;其余动词
+均为陈述性表述,不构成要求。</p>
+<h3 id="15">1.5 字节序与记法</h3>
+<p>除非某个表另有说明,所有多字节字段均为小端(little-endian)且无符号。位 0 为
+最低有效位。<code>u8</code>、<code>u16</code> 和 <code>u32</code> 表示相应宽度的无符号整数。字节值以十六进制
+书写。</p>
+<h2 id="2">2. 传输层</h2>
+<p>链路为异步串口:8 位数据位、无校验位、1 位停止位、无流控。默认速率为
+1 Mbaud。产品可规定另一速率,但两端应通过带外方式就该速率达成一致——协议本身
+不协商它。</p>
+<p>链路为全双工,两个方向承载相同的帧格式(§3)。设备可在任意时刻发送非请求帧
+(§7);无法容忍这样一帧出现在自己的请求与对应响应之间的主机,不符合本标准。</p>
+<p><strong>传输层后端不属于本标准。</strong> 设备以 DMA、逐字节中断还是轮询来服务它的 UART,
+是实现选择:线路上没有任何东西能区分它们,主机不应依赖于当前使用的是哪一种。
+参考实现出厂带 DMA 后端,并带有一个可在编译期选择的中断后端;两者在链路上逐
+字节完全相同,且都符合本标准。关于环形缓冲区、发送队列、中断优先级或 DMA 通道
+的陈述属于产品自身的文档,绝不属于本标准。</p>
+<p>由于 §3.4 的成帧是自同步的,接收方应能在没有带外复位的情况下从被截断或损坏的
+帧中恢复,并应接受帧间无空隙、背靠背到达的帧。设备不应要求帧前存在空闲间隔、
+线路断开(break)或前导码。</p>
+<h2 id="3">3. 帧格式</h2>
+<h3 id="31">3.1 解码后的帧</h3>
+<p>每一帧,在任一方向上,在去掉 §3.4 的成帧之后具有如下布局:</p>
+<pre><code>[LEN u16 LE][CMD u8][SEQ u8][PAYLOAD ...][CRC16 u16 LE]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>宽度</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LEN</code></td>
+<td>u16 LE</td>
+<td>其后跟随的字节数:<code>1 (CMD) + 1 (SEQ) + len(PAYLOAD) + 2 (CRC16)</code>。</td>
+</tr>
+<tr>
+<td><code>CMD</code></td>
+<td>u8</td>
+<td>操作码。响应携带与其所应答的请求相同的操作码。</td>
+</tr>
+<tr>
+<td><code>SEQ</code></td>
+<td>u8</td>
+<td>关联标记,见 §3.5。</td>
+</tr>
+<tr>
+<td><code>PAYLOAD</code></td>
+<td><code>LEN - 4</code></td>
+<td>与命令相关,可以为空。对响应而言它总是 <code>[STATUS][DATA...]</code>,见 §4。</td>
+</tr>
+<tr>
+<td><code>CRC16</code></td>
+<td>u16 LE</td>
+<td>完整性校验,见 §3.3。</td>
+</tr>
+</tbody>
+</table>
+<p>解码后的帧总长度为 <code>2 + LEN</code>。因此最短的合法帧是六个字节:<code>LEN</code>(两字节)
++ <code>CMD</code> + <code>SEQ</code> + <code>CRC16</code>(两字节),载荷为空。</p>
+<h3 id="32-len">3.2 LEN 计入什么</h3>
+<p><code>LEN</code> 计入 <code>LEN</code> 字段<strong>之后</strong>的一切,其中包括那两个 CRC 字节。它<strong>不</strong>计入自
+身。接收方应把 <code>LEN</code> 与自己实际解码出的长度作比较,并应丢弃两者不一致的任何
+帧——这项检查是相等判定,不是下限判定。</p>
+<h3 id="33">3.3 完整性校验</h3>
+<p><code>CRC16</code> 为 <strong>CRC-16/CCITT-FALSE</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>取值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>宽度</td>
+<td>16 位</td>
+</tr>
+<tr>
+<td>生成多项式</td>
+<td><code>0x1021</code></td>
+</tr>
+<tr>
+<td>初值</td>
+<td><code>0xFFFF</code></td>
+</tr>
+<tr>
+<td>输入反射</td>
+<td>否</td>
+</tr>
+<tr>
+<td>输出反射</td>
+<td>否</td>
+</tr>
+<tr>
+<td>最终异或</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<p><strong>其覆盖范围:</strong> 解码后的帧,自 <code>LEN</code> 的第一个字节起至 <code>PAYLOAD</code> 的最后一个
+字节止。那两个 CRC 字节本身被排除在外。它在解码后的帧上计算,绝不在 §3.4 的
+编码字节上计算。</p>
+<p>这是最常见的互操作错误,而且必须同时做对两件互相独立的事:CRC 的变体,以及它
+的覆盖范围。先对照下列向量核对变体:</p>
+<table>
+<thead>
+<tr>
+<th>输入</th>
+<th>CRC16</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>31 32 33 34 35 36 37 38 39</code>(ASCII <code>"123456789"</code>)</td>
+<td><code>0x29B1</code></td>
+</tr>
+<tr>
+<td><code>01 00</code></td>
+<td><code>0x2E3E</code></td>
+</tr>
+<tr>
+<td>(空)</td>
+<td><code>0xFFFF</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>"123456789"</code> 上得出 <code>0x29B1</code> 是该变体已公布的检验值。得出其他结果的实现用错
+了变体——通常的元凶是反射和最终异或——再怎么调整覆盖范围也修不好它。变体确认
+无误之后,再用 §3.6 的完整实例核对覆盖范围。</p>
+<h3 id="34">3.4 成帧</h3>
+<p>解码后的帧经 COBS(Consistent Overhead Byte Stuffing,一致开销字节填充)编码,
+其后追加单个 <code>0x00</code> 字节作为帧分隔符:</p>
+<pre><code>wire bytes = COBS_encode(decoded frame) + 0x00
+</code></pre>
+<p>COBS 保证编码后的字节中不含 <code>0x00</code>,因而该分隔符是无歧义的。分隔符<strong>不是</strong>编
+码数据的一部分,也<strong>不</strong>在 CRC 的覆盖范围内。</p>
+<p>接收方应把 <code>0x00</code> 视为无条件的帧边界:累积字节直到收到一个 <code>0x00</code>,解码已累积
+的内容,然后开始新的一帧。正是这一点让链路成为自同步的——发生任何损坏之后,
+下一个 <code>0x00</code> 就恢复了帧对齐。接收方应丢弃长度为零或以其他方式无法解码的累积
+内容,而不是把它当作一帧。</p>
+<p>这里的编码就是 Cheshire 与 Baker 所发表的 COBS,并且其全部内容都陈述于下。符
+合本标准的实现不需要其他任何资料,尤其<strong>不应</strong>依据"数一数非零字节并发出这个
+计数"这句概括来编写:那样写出的编码器对短帧正确,对长帧则是错的,而 §3.4.1 的
+<code>0xFF</code> 规则正是两者的分野。</p>
+<h4 id="341">3.4.1 编码</h4>
+<p>编码器遍历解码后的帧,把它切分成若干<strong>分组</strong>。每个分组是以下三者之一:</p>
+<ul>
+<li><code>n</code> 个非零字节构成的连续段,<code>0 &lt;= n &lt;= 253</code>,由解码帧中的一个 <code>0x00</code> 字节
+  终结;</li>
+<li>恰好 254 个非零字节构成的连续段,不由任何东西终结;或</li>
+<li>最后一个由 <code>n</code> 个非零字节构成的连续段,<code>0 &lt;= n &lt;= 253</code>,由解码帧的结尾终结。</li>
+</ul>
+<p>每个分组发出为一个<strong>码字节</strong>,其后跟随该分组的那些非零字节,顺序不变、内容不
+改。码字节为 <code>n + 1</code>,因此它落在 <code>0x01</code>-<code>0xFF</code> 之内,永远不会是 <code>0x00</code>。解码
+帧中起终结作用的那个 <code>0x00</code> <strong>不</strong>被发出:由码字节代表它,零就是这样从线路上
+被去掉的。</p>
+<p>因此码值 <code>0xFF</code> 的含义与其他任何取值都不同:</p>
+<ul>
+<li><code>0x01</code>-<code>0xFE</code> —— 其后跟随 <code>code - 1</code> 个非零字节,<strong>并且在解码帧中它们之后
+  站着一个 <code>0x00</code></strong>(对最后一个分组而言,则是帧在那里结束)。</li>
+<li><code>0xFF</code> —— 其后跟随 254 个非零字节,并且它们之后<strong>没有</strong> <code>0x00</code>。该分组之所
+  以结束,仅仅因为一个码字节无法计得更多。</li>
+</ul>
+<p>编码器应为每一段完整的 254 个非零字节发出一个 <code>0xFF</code> 码,并应随后以一个新的分
+组继续。切分一段长的无零连续段时,不应引入帧中原本不存在的零。即使最后一个分
+组不携带任何数据字节,编码器也应为它发出码字节:恰好在 254 字节边界上结束的
+帧,编码为那个 <code>0xFF</code> 分组后面跟一个孤立的 <code>0x01</code>。</p>
+<p>编码后的帧比解码后的帧长一个字节,每出现一个 <code>0xFF</code> 码再多一个字节——对 <code>n</code>
+字节的帧最多有 <code>floor(n / 254)</code> 个。§3.4 的分隔符再加一个字节。</p>
+<h4 id="342">3.4.2 解码</h4>
+<p>解码器应按如下步骤处理已累积的字节——即自上一个分隔符以来收到的全部内容,不
+含分隔符本身:</p>
+<ol>
+<li>读取一个码字节。码字节为 <code>0x00</code> 时应予拒绝:编码器绝不产生这样的码字节,
+   因此该累积内容不是一帧。</li>
+<li>把接下来的 <code>code - 1</code> 个字节原样复制到输出。若剩余字节不足 <code>code - 1</code> 个,
+   应拒绝该帧。</li>
+<li>若该码<strong>不是</strong> <code>0xFF</code> <strong>且</strong>仍有字节剩余,则向输出追加一个 <code>0x00</code> 字节。若
+   该码是 <code>0xFF</code>,或已无剩余,则什么也不追加。</li>
+<li>若仍有字节剩余,返回步骤 1。</li>
+</ol>
+<p>解码器应拒绝整帧,而不是把一个残缺的帧向上层传递。</p>
+<p>步骤 3 恰是那两种码含义的逆运算,而它的两个条件都有分量。在一个 <code>0xFF</code> 分组之
+后追加零,插入了发送方从未发送过的一个字节。在<em>最后</em>一个分组之后追加零,追加
+的则是一个原本只是帧结尾的字节。无论哪一种,解码后的长度都会差一个或多个字节,
+于是该帧通不过 §3.7 的 <code>LEN</code> 检查与 CRC 检查而被丢弃——这意味着一个写错的解码
+器表现出来是长帧上的 CRC 失败,而不是解码失败。追查这一症状的实现者宜先检查步
+骤 3,再去重新核对 CRC。</p>
+<h3 id="35-seq">3.5 SEQ</h3>
+<p><code>SEQ</code> 把响应与其请求关联起来。</p>
+<ul>
+<li>对请求的响应应原样回送该请求的 <code>SEQ</code>。</li>
+<li>由设备发往主机的非请求帧——不应答任何请求的帧——应使用 <code>SEQ = 0</code>。</li>
+<li><code>SEQ</code> 对设备是不透明的。设备不应解释它、校验它,也不应要求它在两次请求之间
+  发生变化。分配 <code>SEQ</code> 取值,以及检出重复或缺口,完全是主机的事。</li>
+</ul>
+<p>流水线发出请求的主机应使用 <code>SEQ</code> 匹配响应,并且不应假定响应按请求发出的顺序
+到达。</p>
+<p>由于非请求帧正是以 <code>SEQ = 0</code> 标明自身,在使用流式传输(§7)的链路上主机不宜发
+出 <code>SEQ = 0</code> 的请求:否则对同一命令而言,由主机发起的停止与由设备发起的停止将
+无法区分(§7.2)。</p>
+<h3 id="36">3.6 完整实例</h3>
+<p>本节中的每一个字节都是对照参考实现算出来的,不是示意性的。</p>
+<h4 id="361">3.6.1 一个六字节的请求</h4>
+<p>一个完整的 <code>CMD_PING</code> 请求,<code>SEQ = 0x07</code>,无载荷。</p>
+<p>解码后的帧——六个字节:</p>
+<pre><code>04 00 01 07 E7 0D
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>字节</th>
+<th>取值</th>
+<th>字段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-1</td>
+<td><code>04 00</code></td>
+<td><code>LEN</code> = 4 —— <code>CMD</code> + <code>SEQ</code> + 零个载荷字节 + <code>CRC16</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>01</code></td>
+<td><code>CMD</code> —— 取自 §6.1 的操作码</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>07</code></td>
+<td><code>SEQ</code> —— 主机的关联标记;响应回送它</td>
+</tr>
+<tr>
+<td>—</td>
+<td>—</td>
+<td><code>PAYLOAD</code> —— 本命令为空</td>
+</tr>
+<tr>
+<td>4-5</td>
+<td><code>E7 0D</code></td>
+<td><code>CRC16</code> = <code>0x0DE7</code>,小端</td>
+</tr>
+</tbody>
+</table>
+<p>CRC 在字节 0-3(即 <code>04 00 01 07</code>)上计算——<strong>包括</strong>那两个 <code>LEN</code> 字节,
+<strong>排除</strong>那两个 CRC 字节。从 <code>CMD</code> 开始计算的实现会得到另一个值,而它发出的帧
+会被丢弃且不会收到任何错误应答(§3.7)。</p>
+<p>在线路上,经 COBS 编码并加上分隔符之后——八个字节:</p>
+<pre><code>02 04 05 01 07 E7 0D 00
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>字节</th>
+<th>取值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>02</code></td>
+<td>COBS 分组码:其后跟随一个非零字节,并且这里原本站着一个零</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>04</code></td>
+<td><code>LEN</code> 低字节</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>05</code></td>
+<td>COBS 分组码:其后跟随四个非零字节</td>
+</tr>
+<tr>
+<td>3-6</td>
+<td><code>01 07 E7 0D</code></td>
+<td><code>CMD</code>、<code>SEQ</code>、<code>CRC16</code> —— 原样承载</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>00</code></td>
+<td>帧分隔符 —— 不是 COBS 数据,不在 CRC 覆盖范围内</td>
+</tr>
+</tbody>
+</table>
+<p>注意 COBS 做了什么:解码帧中那唯一的 <code>0x00</code>(<code>LEN</code> 的高字节)被去掉了,取代它
+的码字节是 <code>0x02</code> —— 一个数据字节,然后一个零(§3.4.1)。最后一个码是 <code>0x05</code>:
+四个数据字节,然后是帧的结尾。</p>
+<h4 id="362-254">3.6.2 一个含 254 字节连续段的帧</h4>
+<p>上面那一帧无法展示 <code>0xFF</code> 码,因为六个字节里不含长连续段。这一帧可以。它是一
+个固件映像数据请求,而这正是实践中出现长无零连续段的地方:映像字节是任意的,
+动辄数百个字节都不出现一个零。它的操作码属于保留给桥接层的区段(§9.2),定义
+在第二部分中——本节的成帧在两个区段中完全一致,而这个用例正好把它检验到位。</p>
+<p>解码后的帧为 266 个字节:</p>
+<table>
+<thead>
+<tr>
+<th>字节</th>
+<th>取值</th>
+<th>字段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-1</td>
+<td><code>08 01</code></td>
+<td><code>LEN</code> = 264</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>E9</code></td>
+<td><code>CMD</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>09</code></td>
+<td><code>SEQ</code></td>
+</tr>
+<tr>
+<td>4-7</td>
+<td><code>00 10 00 00</code></td>
+<td>映像偏移,<code>u32</code> LE</td>
+</tr>
+<tr>
+<td>8-263</td>
+<td><code>01 02 03</code> … <code>FD FE 01 02</code></td>
+<td>256 个映像字节;字节 <code>8 + i</code> 存放 <code>(i mod 254) + 1</code>,故该连续段中没有一个字节为零</td>
+</tr>
+<tr>
+<td>264-265</td>
+<td><code>1A 86</code></td>
+<td><code>CRC16</code> = <code>0x861A</code>,小端</td>
+</tr>
+</tbody>
+</table>
+<p>编码后为 268 个字节,加分隔符为 269 个,分为五个 COBS 分组:</p>
+<table>
+<thead>
+<tr>
+<th>编码后字节</th>
+<th>码</th>
+<th>数据字节</th>
+<th>该码所表示的含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0-4</td>
+<td><code>05</code></td>
+<td><code>08 01 E9 09</code></td>
+<td>四个非零字节,然后一个 <code>0x00</code> —— 解码字节 4</td>
+</tr>
+<tr>
+<td>5-6</td>
+<td><code>02</code></td>
+<td><code>10</code></td>
+<td>一个非零字节,然后一个 <code>0x00</code> —— 解码字节 6</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>01</code></td>
+<td>—</td>
+<td>没有数据字节,然后一个 <code>0x00</code> —— 解码字节 7</td>
+</tr>
+<tr>
+<td>8-262</td>
+<td><code>FF</code></td>
+<td><code>01 02</code> … <code>FD FE</code>(254 个字节)</td>
+<td>254 个非零字节,其后<strong>没有</strong>零</td>
+</tr>
+<tr>
+<td>263-267</td>
+<td><code>05</code></td>
+<td><code>01 02 1A 86</code></td>
+<td>四个非零字节,然后是帧的结尾</td>
+</tr>
+<tr>
+<td>268</td>
+<td>—</td>
+<td><code>00</code></td>
+<td>帧分隔符 —— 不是 COBS 数据,不在 CRC 覆盖范围内</td>
+</tr>
+</tbody>
+</table>
+<p>因此编码后开头的若干字节是 <code>05 08 01 E9 09 02 10 01 FF 01 02 03 04</code> …,而结尾
+的若干字节是 … <code>FB FC FD FE 05 01 02 1A 86 00</code>。</p>
+<p>编码字节 8 处的那个 <code>0xFF</code> 才是本例的要点。它的 254 个数据字节是解码字节
+8-261;紧随其后的分组从解码字节 262 接续,两者之间什么也没有。在那里插入一个
+<code>0x00</code> 的解码器会得到 267 个解码字节而不是 266 个,于是这一帧——它明明是完好
+到达的——同时通不过 <code>LEN</code> 检查和 CRC 检查,被丢弃且无任何应答。</p>
+<p>也请注意最后一个分组。它的码是 <code>0x05</code> 而不是 <code>0xFF</code>,而且它所携带的四个字节之
+后跟的是帧的结尾而不是一个零:解码字节 265 是 CRC 的高字节,其后再无内容。在
+最后一个分组之后追加一个隐含零的解码器,错在同一处,也同样差一个字节。</p>
+<h3 id="37">3.7 接收方的校验,按顺序</h3>
+<p>接收方应按下列顺序施加这些检查,并应在第一项失败时就丢弃该帧:</p>
+<ol>
+<li>COBS 解码(§3.4.2)成功,且产出至少六个字节。</li>
+<li>在解码后的帧上(排除其最后两个字节)计算出的 CRC,等于那两个字节所携带的
+   <code>CRC16</code>。</li>
+<li><code>LEN</code> 等于解码后的长度减二。</li>
+</ol>
+<p>任何一项未通过的帧应被丢弃,并且不应被转发。至于可以就它<em>说</em>些什么,则取决于
+角色(§1.3)。</p>
+<p><strong>设备应静默丢弃它</strong>,并且不应应答它。完整性校验未通过的帧,其 <code>CMD</code> 与 <code>SEQ</code>
+都不可信,因此既没有可据以应答的操作码,也没有可用来应答的标记;回复只能是猜
+测,而且是发给一个也许根本不曾发出过的请求。</p>
+<p><strong>桥接器可以用它读到的 <code>CMD</code> 和 <code>SEQ</code> 应答</strong> <code>[ERR][ERR_BAD_CRC]</code>,参考桥接器
+即如此实现。它的处境不同于设备:一个对自己拒绝转发的帧只字不提的桥接器,与一
+个收到该帧却将其忽略的设备,在外部看来无法区分,因此作出应答才能把损坏归因于
+桥接器所能看见的那一段链路。同样的道理也延伸到唯一职责就是恢复的实现——引导加
+载程序(bootloader)——在那里,沉默与一块根本没有启动起来的板子无法区分。</p>
+<p>主机应容忍这两种结果:没有应答,以及一个 <code>SEQ</code> 它可能并不认识的
+<code>[ERR][ERR_BAD_CRC]</code>。</p>
+<p>只有三项检查全部通过之后,该帧才算被<em>接受</em>。无论其操作码最终是什么,正是"接
+受"这一事件驱动 §5.3 的链路活跃性计时。</p>
+<h3 id="38">3.8 最大帧长</h3>
+<p>设备应公布它所接受的最大编码帧长度(不含分隔符);该值是产品常量,记录在第二
+部分中。</p>
+<p>这个上限是一条真实的边界,不是一条建议。接收方把编码后的字节累积进一个固定大
+小的缓冲区,越过其末端的字节被丢弃,于是超长的帧以被截断的形态到达,并按 §3.7
+被丢弃——静默地,没有任何错误应答。发出这样一帧的主机什么也观察不到,而这与它
+从一条已死的链路上观察到的完全相同。</p>
+<ul>
+<li>主机不应发送长于设备所公布上限的帧。</li>
+<li>主机不应以试验方式推断该上限:某一帧得到了应答,只能证明那一帧放得下。</li>
+<li>设备应接受它所实现的各命令组可能要求它接受的每一帧。设备不应公布一个把它自
+  己会应答的命令排除在外的上限。</li>
+</ul>
+<h2 id="4">4. 请求、响应与错误</h2>
+<h3 id="41">4.1 模型</h3>
+<p>本协议是请求/响应式的,另带一条非请求的旁路通道。</p>
+<ul>
+<li>设备处理的每一个请求产生<strong>恰好一个</strong>响应帧,携带相同的 <code>CMD</code> 与相同的 <code>SEQ</code>。</li>
+<li>设备不应对一个请求应答两次,也不应让一个已处理的请求得不到应答——只有一个例
+  外,即 §5.2 的静默丢弃。</li>
+<li>由设备发往主机的非请求帧(§7)携带 <code>SEQ = 0</code>,不应答任何东西。</li>
+<li>设备不要求并发处理请求,主机也不应假定它会。</li>
+</ul>
+<h3 id="42">4.2 状态字节</h3>
+<p>响应载荷总是 <code>[STATUS u8][DATA ...]</code>。</p>
+<table>
+<thead>
+<tr>
+<th>STATUS</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code></td>
+<td>OK。<code>DATA</code> 是该命令的结果,可以为空。</td>
+</tr>
+<tr>
+<td><code>0x01</code></td>
+<td>ERR。<code>DATA[0]</code> 是一个错误码(§4.3)。允许有更多的 <code>DATA</code> 字节,其含义随错误码而定。</td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td>保留。符合本标准的设备都不会发出它。</td>
+</tr>
+</tbody>
+</table>
+<p>主机应把 <code>0x00</code> 以外的任何状态视为失败,并且不应因一个无法识别的状态值而失去
+同步:把该帧读完,报告失败,继续运行。尤其是状态 <code>0x02</code>,它是保留的而不是空闲
+的——本协议的一个更早的修订版曾把它规定为第二个错误状态——因此即使现在没有任何
+东西发出它,接收方仍须容忍它到达。</p>
+<p>设备应发送 <code>[0x01][错误码]</code> 而不是光秃秃的 <code>[0x01]</code>:主机无法把一个光秃秃的错
+误与一个被截断的错误区分开。</p>
+<h3 id="43">4.3 核心错误码空间</h3>
+<p>错误码 <code>0x00</code> 到 <code>0x0F</code> 是<strong>核心空间</strong>。它只在此处定义,别处不得定义,并且它恰
+好只包含以下这些码:</p>
+<div class="tw"><table><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody><tr><td>0x00</td><td>ERR_OK</td></tr><tr><td>0x01</td><td>ERR_BAD_LEN</td></tr><tr><td>0x02</td><td>ERR_BAD_CRC</td></tr><tr><td>0x03</td><td>ERR_BAD_ARGS</td></tr><tr><td>0x04</td><td>ERR_NOT_READY</td></tr><tr><td>0x05</td><td>ERR_UNKNOWN</td></tr></tbody></table></div>
+
+<p>每一个都只有一个含义,而本节文字就是那个含义。</p>
+<ul>
+<li><strong><code>ERR_OK</code>(<code>0x00</code>)</strong> —— 无错误。它存在,是为了让零在错误码空间中的含义与
+  它在状态字节中的含义一致,而且它<strong>从不被发送</strong>:设备报告成功的方式是状态
+  <code>0x00</code> 且完全不带错误码。<code>[0x01][0x00]</code> —— 一个携带 <code>ERR_OK</code> 的错误状态 ——
+  是格式非法的响应,主机应把它当作失败而不是成功。</li>
+<li><strong><code>ERR_BAD_LEN</code>(<code>0x01</code>)</strong> —— 载荷短于该命令所要求的长度。在检视其中任何取
+  值之前即已判定。</li>
+<li><strong><code>ERR_BAD_CRC</code>(<code>0x02</code>)</strong> —— 某一帧的完整性校验未通过,而收到它的那一层正
+  在报告这一事实,而不是静默丢弃。设备不应发送此码;桥接器或引导加载程序可以
+  (§3.7)。</li>
+<li><strong><code>ERR_BAD_ARGS</code>(<code>0x03</code>)</strong> —— 载荷长度足够,但其中有内容超出范围、无法识
+  别,或不可写。它同时也是对设备不予处理的操作码的应答(§9.1)。</li>
+<li><strong><code>ERR_NOT_READY</code>(<code>0x04</code>)</strong> —— 命令被识别,参数也有效,但设备当前的状态不
+  允许执行它。同样的请求原封不动地稍后再发,可能会成功。它适用于已经打开的会
+  话(§6.4)、尚未进入的模式,或主机尚未满足的任何其他前置条件。</li>
+<li><strong><code>ERR_UNKNOWN</code>(<code>0x05</code>)</strong> —— 操作码无法识别。可选,对这一情形而言与
+  <code>ERR_BAD_ARGS</code> 可以互换;参见 §9.1。</li>
+</ul>
+<p>产品不应在 <code>0x00</code>-<code>0x0F</code> 中定义新的码,不应赋予已有的码第二个含义,也不应把某
+个码用于上面所定义之外的情形。这些是主机不必知道对端是什么就能解释的码。</p>
+<p>请注意其中最常见的两个码各自的形态。<code>ERR_BAD_LEN</code> 意为载荷短到该命令根本无法
+执行,在检视其中任何取值之前即已判定。<code>ERR_BAD_ARGS</code> 意为载荷长度足够,但其中
+有内容超出范围、无法识别,或不可写。设备不应对短载荷应答 <code>ERR_BAD_ARGS</code>,也不
+应对错误取值应答 <code>ERR_BAD_LEN</code> —— 主机正是靠这一区别把"帧构造错了"和"值选错
+了"分开。</p>
+<p>命令的载荷长度是一个<strong>下限</strong>,只有 <code>LEN</code> 是按相等判定检查的(§3.2)。设备不应
+因为载荷<em>长于</em>该命令所要求的长度而应答 <code>ERR_BAD_LEN</code>;它应读取该命令所定义的
+那些字节,并忽略其余部分。主机不应指望多发的尾随字节会被读取,也不应把一个 OK
+响应当作它们被读取的证据:两种情况下回来的是同一个响应,而这正是那些多余字节
+无法承载含义的原因。</p>
+<h3 id="44">4.4 扩展空间</h3>
+<p><code>0x10</code> 及以上的码构成<strong>扩展空间</strong>,本标准在其中不作任何分配。那里的一个码,含
+义由发出它的那一层规定,而且只有在主机知道是哪一层作出的应答之后才可解释。</p>
+<p>这并非假想。桥接层(§9.2)把 <code>0x11</code>-<code>0x15</code> 用于其 SWD 与内核控制操作,把
+<code>0x20</code>、<code>0x21</code> 和 <code>0xE1</code> 用于闪存操作,把 <code>0x30</code>-<code>0x35</code> 用于它自身的固件更新。
+错误码与操作码是两个不同的空间:这里点名的 <code>0xE1</code> 是一个错误码,而同一个 <code>0xE1</code>
+也落在 §9.2 桥接层保留的<em>操作码</em>区段之内这件事,并不说明关于它的任何事情 —— 该
+字节在帧中所处的位置决定了它属于哪一个空间。
+第一个区块值得精确点名:<code>0x14</code> 和 <code>0x15</code> 是内核暂停与内核恢复,它们紧挨着那些
+SWD 错误却并不是 SWD 错误,把它们读作传输故障已经耗掉过实机调试的时间。那些含
+义属于桥接器——这里点名的这些区块就是该层分配的全部,而第二部分的桥接器附录载
+有会引发它们的那些命令——并且它们对另一层可能赋予同样这些数字的含义什么也没有
+说。同一条链路上的一个设备和一个桥接器可以各自把 <code>0x30</code> 用于毫不相干的事情而
+不冲突,因为帧本身说明了是它们中的哪一个作出的应答。</p>
+<p>产品需要自有错误码时应遵守的规则:</p>
+<ol>
+<li>从 <code>0x10</code> 或更高处分配。绝不在核心空间中分配。</li>
+<li>在第二部分中把该分配记录在拥有它的那一层名下。</li>
+<li>对自己这一层之外的数字不作任何假定 —— 一个码并不因为别的某一层没用它就是
+   空闲的。</li>
+</ol>
+<h2 id="5">5. 工作模式</h2>
+<h3 id="51">5.1 模式</h3>
+<p>设备任何时候都恰好处于一种工作模式。改变它的是 <code>CMD_SET_MODE</code>(§6.1)。</p>
+<div class="tw"><table><thead><tr><th>Value</th><th>Name</th></tr></thead><tbody><tr><td>0x00</td><td>OPMODE_ISP</td></tr><tr><td>0x01</td><td>OPMODE_NORMAL</td></tr><tr><td>0x02</td><td>OPMODE_DEBUG</td></tr><tr><td>0x03</td><td>OPMODE_TUNING</td></tr><tr><td>0x04</td><td>OPMODE_TEST</td></tr></tbody></table></div>
+
+<p>本标准规定各模式的取值,并确定每种模式是<em>为什么</em>而设。一种模式在产品内部做什
+么——启动、挂起还是不理会哪些子系统——由产品自行规定,并记录在第二部分中。</p>
+<ul>
+<li><strong><code>OPMODE_ISP</code></strong> —— 选择产品的在系统编程通路。实现它的设备在该模式下可以停
+  止响应它平常的输入,并且在没有后续内容到来时可以自行回到 <code>OPMODE_NORMAL</code>。</li>
+<li><strong><code>OPMODE_NORMAL</code></strong> —— 上电默认模式,也是安静的那一个。参见 §5.2。</li>
+<li><strong><code>OPMODE_DEBUG</code></strong> —— 设备所实现的每一个命令都会被应答。</li>
+<li><strong><code>OPMODE_TUNING</code></strong> —— 保留给由主机驱动的标定(§6.4)。</li>
+<li><strong><code>OPMODE_TEST</code></strong> —— 保留给产品自己的产线测试。</li>
+</ul>
+<p>设备应以 <code>OPMODE_NORMAL</code> 启动。对于自己没有实现的模式取值,设备应以
+<code>ERR_BAD_ARGS</code> 应答 <code>CMD_SET_MODE</code>,而不是忽略它或选中相邻的模式。</p>
+<p>设备接受了一种保留模式却并不为之做任何事,这仍然以 OK 确认 —— 该确认的含义是
+"取值被识别",不是"这个模式做了什么"。</p>
+<h3 id="52-normal">5.2 NORMAL 应答什么</h3>
+<p><code>OPMODE_NORMAL</code> 是上电默认模式,而且它刻意保持安静:在主机主动要求之前,它把
+设备自身的时序与主机流量隔离开。</p>
+<p>在 <code>OPMODE_NORMAL</code> 下,设备应处理并应答恰好这些命令:<code>CMD_PING</code>、<code>CMD_INFO</code>、
+<code>CMD_GET_VERSION</code>、<code>CMD_SET_MODE</code>、<code>CMD_DBG_ONLINE</code> 和 <code>CMD_RESET</code>(§6.1、
+§6.2)。其他每一个操作码——无论已分配、未分配还是未实现——都应被<strong>静默丢弃</strong>:
+完全没有响应,连错误也没有,也不采取任何动作。</p>
+<p>这六个就是规范性的集合;别处任何其他的列举都不具权威性。</p>
+<p>这是本标准中唯一一处格式正确的请求得不到应答的地方,而且两端必须以同样的方式
+理解它。在 <code>OPMODE_NORMAL</code> 下得不到应答的主机,并没有发现一台坏掉的设备;它发
+现的是一台还没有人请它离开上电模式的设备。<code>CMD_SET_MODE</code> 在每一种模式下都会被
+处理,而且它是唯一的出路。</p>
+<p><code>CMD_PING</code>、<code>CMD_INFO</code> 和 <code>CMD_GET_VERSION</code> 在每一种模式下都会被应答,这是设计
+使然:识别一台设备并确认它还活着,不应要求改变它的状态。</p>
+<h3 id="53">5.3 链路活跃性</h3>
+<p>处于 <code>OPMODE_NORMAL</code> 以外的任何模式时,若在超过链路活跃性间隔
+<code>ONLINE_TIMEOUT_MS</code> 的时间内没有任何帧被接受(§3.7),设备应把自己退回
+<code>OPMODE_NORMAL</code>。该计时器由<strong>任何</strong>被接受的帧复位,而不是由某一个特定的操作码
+复位。</p>
+<p>因此,打算停留在 <code>OPMODE_NORMAL</code> 之外的主机应在每一个这样的间隔之内发出<em>一点
+什么</em>。<code>CMD_DBG_ONLINE</code> 作为最廉价的选择而存在——它不带载荷,也不做别的事——但
+任何被接受的帧都可以。</p>
+<p>其目的不是活跃性上报。而是:非上电默认的模式可能已经挂起了设备自身的某些保护
+行为,而一根被拔掉的线缆不可以让这些保护一直挂起。符合本标准的设备应让这一退
+回是无条件的:它不能依赖主机确认任何东西,因为所要防范的失效恰恰是主机已经不
+在了。</p>
+<p>该间隔的取值是产品常量,在第二部分中给出。</p>
+<h2 id="6">6. 核心命令集</h2>
+<p>本节中的各表由权威的操作码定义生成。请求与响应的形态在表中给出;正文给出围绕
+它们的规则。</p>
+<h3 id="61">6.1 身份、模式与活跃性</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x01</td><td>CMD_PING</td><td>[]</td><td>[OK][&quot;PONG&quot;]</td><td></td></tr><tr><td>0x02</td><td>CMD_INFO</td><td>[]</td><td>[OK][id string, contains &quot;CFS&quot;]</td><td></td></tr><tr><td>0x03</td><td>CMD_SET_MODE</td><td>[op_mode u8]</td><td>[OK] or [ERR][ERR_BAD_ARGS]</td><td></td></tr><tr><td>0x04</td><td>CMD_DBG_ONLINE</td><td>[]</td><td>[OK]</td><td>liveness ping, processed in any op_mode</td></tr><tr><td>0x05</td><td>CMD_GET_VERSION</td><td>[sel u8]</td><td>[OK][sel][major][minor][patch]</td><td></td></tr></tbody></table></div>
+
+<p>本组中的每一个命令都应由每一台符合本标准的设备实现,而且其中每一个在每一种工
+作模式下都会被应答。</p>
+<ul>
+<li><strong><code>CMD_PING</code></strong> —— 活跃性探测。它的响应载荷是固定文本;主机宜检查状态字节,
+  而不是解析那段文本。</li>
+<li><strong><code>CMD_INFO</code></strong> —— 一个供人阅读的身份字符串。它是自由文本,内容由产品自行规
+  定。主机不应解析它来作决定;<code>CMD_GET_VERSION</code> 就是为此而存在的。</li>
+<li><strong><code>CMD_SET_MODE</code></strong> —— 参见 §5。</li>
+<li><strong><code>CMD_DBG_ONLINE</code></strong> —— 一个空操作,其唯一效果是复位 §5.3 的活跃性计时器。</li>
+<li><strong><code>CMD_GET_VERSION</code></strong> —— 供机器读取的身份。一个操作码通过一个前导选择子字节
+  回答不止一个问题,而响应回送该选择子,使得一条回复是自描述的:既能从日志里
+  读懂,也能被流水线发出这两个请求的主机匹配上。</li>
+</ul>
+<p>请求为 <code>[sel u8]</code>,响应为 <code>[OK][sel u8][major u8][minor u8][patch u8]</code>,选择子
+在 <code>DATA[0]</code> 处重复出现。本标准定义两个选择子:</p>
+<div class="tw"><table><thead><tr><th>Value</th><th>Name</th><th>Meaning</th></tr></thead><tbody><tr><td>0x00</td><td>VER_SEL_FW</td><td>the firmware build on this board</td></tr><tr><td>0x01</td><td>VER_SEL_CMD_SET</td><td>the opcode table it implements</td></tr></tbody></table></div>
+
+<p><code>VER_SEL_FW</code> 报告作出应答的那一份固件映像的版本 —— 这是一个产品身份,在不同产
+品之间不可比较。<code>VER_SEL_CMD_SET</code> 报告 §9.3 的命令集版本,本标准的每一个实现都
+携带它,而且它在所有实现之间可比较。两者都是同样的 <code>MAJOR.MINOR.PATCH</code> 形态,
+而且谁也无法由谁推导出来。</p>
+<p><code>0x02</code> 及以上的选择子取值本标准未作分配。对于自己没有实现的选择子,设备应应答
+<code>ERR_BAD_ARGS</code>,并且不应用另一个选择子的值来应答 —— 流水线发出了两个请求的主
+机,只有被回送的选择子可以把两条回复分辨开。每一台符合本标准的设备都应实现上
+述两个选择子。选择子编号是按操作码各自独立的,并不共用:桥接层有它自己的版本
+命令(§9.2、第二部分),带有它自己的选择子空间,同样的选择子取值在那里表示别
+的东西。</p>
+<p>在依赖本组之外的任何操作码之前,主机宜先读取命令集版本。</p>
+<h3 id="62">6.2 设备控制</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x10</td><td>CMD_RESET</td><td>[]</td><td>[OK][&quot;SYSTEM RESET&quot;], then NVIC_SystemReset()</td><td></td></tr><tr><td>0x11</td><td>CMD_ACTIVATE</td><td>[]</td><td>[OK]  (stub)</td><td></td></tr><tr><td>0x12</td><td>CMD_DEACTIVATE</td><td>[]</td><td>[OK]  (stub)</td><td></td></tr><tr><td>0x13</td><td>CMD_START_HEATING</td><td>[]</td><td>[OK][3 bytes]  (stub)</td><td></td></tr><tr><td>0x14</td><td>CMD_STOP_HEATING</td><td>[]</td><td>[OK][3 bytes]  (stub)</td><td></td></tr></tbody></table></div>
+
+<p><code>CMD_RESET</code> 是本组中要求每一台设备都实现的命令,而且它在每一种模式下都会被应
+答。设备应在复位<strong>之前</strong>发出它的响应,并应先让该响应离开发送通路;复位之后没
+有任何帧跟随。此后主机应把链路视为已重新初始化 —— 设备回来时处于
+<code>OPMODE_NORMAL</code>(§5.1)。</p>
+<p>本组中其余的操作码,是给产品自己的激活控制与加热控制预留的标准化位置。没有实
+现其中某一个的产品应按 §9.1 应答它,而不是予以确认,并且不应把这些操作码中的
+任何一个挪作不相干的功能。</p>
+<p><strong>一处已知的偏离,在此陈述而不加掩饰。</strong> 参考固件今天并不满足那条规则:
+<code>CMD_ACTIVATE</code>、<code>CMD_DEACTIVATE</code>、<code>CMD_START_HEATING</code> 和 <code>CMD_STOP_HEATING</code> 无
+论产品是否真的为之做事,都应答 <code>[OK]</code>,这就是上表把它们各自标为桩(stub)的原
+因。该规则依然成立,新的实现不应照抄这一行为;在它存续期间的后果是:来自这四
+个操作码的 <code>[OK]</code> 不构成任何事情发生过的证据,主机不应把它读作证据。第二部分记
+录了哪些产品受此影响。</p>
+<h3 id="63">6.3 寄存器访问</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x20</td><td>CMD_REG_WRITE8</td><td>[reg_addr u8][reg_data u8]</td><td>[OK][resp_data u8]</td><td></td></tr><tr><td>0x21</td><td>CMD_REG_READ8</td><td>[reg_addr u8]</td><td>[OK][resp_data u8]</td><td></td></tr><tr><td>0x22</td><td>CMD_REG_WRITE16</td><td>[reg_addr u8][reg_data u16]</td><td>[OK][resp_data u16]</td><td></td></tr><tr><td>0x23</td><td>CMD_REG_READ16</td><td>[reg_addr u8]</td><td>[OK][resp_data u16]</td><td></td></tr><tr><td>0x24</td><td>CMD_REG_BURST_READ16</td><td>[reg_addr u8]</td><td>[OK][resp_data u16]</td><td></td></tr></tbody></table></div>
+
+<p>一个可选组,面向对外暴露某个外设或伴随芯片寄存器文件的产品。寄存器地址及其内
+容完全由产品自行规定。没有寄存器文件的产品应按 §9.1 应答本组。</p>
+<h3 id="64">6.4 调校</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x70</td><td>CMD_TUNING_START</td><td>[tuning_id u8][duration_ms u32][log_fields_mask u16][report_period_ms u16]</td><td>[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td></td></tr><tr><td>0x71</td><td>CMD_TUNING_REPORT_FRAME</td><td></td><td>[OK][tick_ms u32][field u16]... (one u16 per set bit in log_fields_mask, LSB first)</td><td>(fw-&gt;host only, seq=0) same shape family as CMD_LOG_BURST_FRAME</td></tr><tr><td>0x72</td><td>CMD_TUNING_END</td><td>[]</td><td>[OK]</td><td>host-initiated (echoes req seq) or fw-initiated on duration timeout (seq=0), same idempotent shape as CMD_LOG_BURST_STOP</td></tr><tr><td>0x73</td><td>CMD_SET_TUNING_PAR</td><td>[tuning_id u8][coil_idx u8][heating_mode u8][heater_type u8][step u8][value u16 LE]</td><td>[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td>no session required</td></tr><tr><td>0x74</td><td>CMD_GET_TUNING_PAR</td><td>[tuning_id u8][coil_idx u8][heating_mode u8][heater_type u8][step u8]</td><td>[OK][value u16 LE] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td>no session required</td></tr></tbody></table></div>
+
+<p>一个可选组,用于由主机驱动的标定:设备在主机控制的时序下运行它真实的量产控制
+算法,以便实机测试台可以对其进行测量。本标准确定的是<strong>形态</strong>,不是内容:</p>
+<ul>
+<li><code>CMD_TUNING_START</code> 打开一个会话;在一个会话已激活时再来一个,应以
+  <code>ERR_NOT_READY</code> 拒绝。</li>
+<li>会话激活期间,设备按所请求的节奏以非请求方式发出报告帧,<code>SEQ = 0</code>,采用 §7.2
+  的字段布局。</li>
+<li><code>CMD_TUNING_END</code> 关闭一个会话,并且是<strong>双向两用</strong>的,与 <code>CMD_LOG_BURST_STOP</code>
+  完全一样(§7.2):由主机发起时,它回送请求的 <code>SEQ</code>,并且是幂等的;由设备发起
+  时——会话时长走完,或者设备自行结束了这次运行——它带着 <code>SEQ = 0</code> 到达。主机应
+  把两条到达路径当作同一个"会话已结束"事件来处理。</li>
+<li>设备可以出于自身原因提前结束一个会话。主机不应假定一个会话会跑满它所请求的
+  时长,也不应假定每个会话至少产出一个报告帧。</li>
+<li>本组中的参数命令以一个索引元组来寻址一张标定表。每一个索引都应针对它所寻址
+  的那张表的真实维度作边界检查,越界应为 <code>ERR_BAD_ARGS</code> —— 绝不钳位,也绝不静
+  默地写入相邻单元。</li>
+</ul>
+<p>有哪些调校标识符、每一个扫描什么、索引元组对每一个而言意味着什么,以及一个会话
+意味着挂起产品自身的哪些保护行为,全都由产品自行规定,并记录在第二部分中。</p>
+<h3 id="65">6.5 显示</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x60</td><td>CMD_DISP_ON</td><td>[]</td><td>[OK]</td><td></td></tr><tr><td>0x61</td><td>CMD_DISP_OFF</td><td>[]</td><td>[OK]</td><td></td></tr></tbody></table></div>
+
+<p>一个可选组。没有可由主机控制的显示的产品按 §9.1 应答它。</p>
+<h2 id="7">7. 日志与遥测流式传输</h2>
+<p>本节中的两种机制都发送由设备发往主机、不应答任何请求的帧。它们全都携带
+<code>SEQ = 0</code>(§3.5)。</p>
+<p>两个组都是<strong>可选的</strong>。两个都不实现的产品应按 §9.1 应答它们的操作码;本标准中没
+有别的东西依赖它们。</p>
+<p><strong>非请求帧的形态与响应完全相同。</strong> 不应答任何请求并不改变它的载荷:按 §4.2 的
+要求,它是 <code>[STATUS u8][DATA ...]</code>,其中 <code>STATUS = 0x00</code>,而帧自身的内容从
+<code>DATA[0]</code> 开始 —— 也就是从载荷的第 1 个字节开始,不是第 0 个。这对本节中的每一
+帧以及 §6.4 的调校报告帧都成立。把第一个载荷字节读作内容的主机,在它今后采集
+的每一个样本上都会错开一个字节,而且这个错误是静默的,因为 <code>0x00</code> 这个状态字节
+看上去完全可能就是第一个数据字节。生成的各表把这一形态写明了,<code>[OK]</code> 在最前。</p>
+<h3 id="71">7.1 文本日志</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x30</td><td>CMD_LOG_FRAME</td><td></td><td>[OK][text bytes]</td><td>(fw-&gt;host only)</td></tr><tr><td>0x31</td><td>CMD_LOG_START</td><td>[]</td><td>[OK]</td><td></td></tr><tr><td>0x32</td><td>CMD_LOG_STOP</td><td>[] (host) or (fw-&gt;host, unsolicited)</td><td>[OK]</td><td></td></tr></tbody></table></div>
+
+<p>一次面向自由文本诊断信息的拉取式握手,其形态使得设备的日志输出无法淹没链路:</p>
+<ol>
+<li>主机发送 <code>CMD_LOG_START</code>。</li>
+<li>设备应在武装日志功能<strong>之前</strong>发出它的确认,并应把该确认排在其后一切内容之
+   前,使主机总是先看到确认、再看到任何日志内容。这一顺序是承重的:先武装的设
+   备可能在主机还在等待自己那条响应的时候发出一行日志,而主机会把那一行解析成
+   它所请求的响应。</li>
+<li>设备把下一行日志作为一条携带该文本的 <code>CMD_LOG_FRAME</code> 发出,随后跟一条
+   <code>CMD_LOG_STOP</code>。</li>
+<li>主机为下一行重新发出 <code>CMD_LOG_START</code>。</li>
+</ol>
+<p>主机应容忍 <code>CMD_LOG_STOP</code> 到达之前没有 <code>CMD_LOG_FRAME</code>:那意味着设备没有什么可
+说的。主机不应假定该文本以 NUL 结尾,并应以载荷长度为准。</p>
+<p>主机还应容忍这样的设备:它在没有再收到 <code>CMD_LOG_START</code> 的情况下持续发出帧 ——
+把流限制为一行的正是那一步解除武装,而产品可以刻意让它保持武装以进行连续遥测。
+需要让流停下来的主机应有办法解除武装:选择 <code>OPMODE_NORMAL</code> 的 <code>CMD_SET_MODE</code>
+总是可以做到,而产品也可以把日志功能另外暴露为一个参数槽位(§8)。</p>
+<p>文本日志用于诊断。任何以固定节奏采样的东西都应改用 §7.2 —— 在那样的速率下作文
+本格式化与解析,恰恰是二进制通路存在的意义所在,即为了避免这一开销。</p>
+<h3 id="72">7.2 二进制遥测突发</h3>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x40</td><td>CMD_LOG_BURST_START</td><td>[fields_mask u16][period_ms u16][duration_ms u32]</td><td>[OK] or [ERR][ERR_BAD_ARGS/ERR_BAD_LEN]</td><td></td></tr><tr><td>0x41</td><td>CMD_LOG_BURST_FRAME</td><td></td><td>[OK][tick_ms u32][field u16]... (one u16 per set bit in fields_mask, LSB first)</td><td>(fw-&gt;host only, seq=0)</td></tr><tr><td>0x42</td><td>CMD_LOG_BURST_STOP</td><td>[]</td><td>[OK][total_frame_cnt u16]</td><td>host-initiated (echoes req seq) or fw-initiated on duration timeout (seq=0)</td></tr></tbody></table></div>
+
+<p>一条用于时间序列测量的定宽二进制流。</p>
+<p><strong>启动一个会话。</strong> <code>CMD_LOG_BURST_START</code> 接受一个字段位掩码、一个报告周期和一
+个时长。周期应落在 <code>[BURST_PERIOD_MS_MIN, BURST_PERIOD_MS_MAX]</code> 之内,时长若非
+零则应落在 <code>[BURST_DURATION_MS_MIN, BURST_DURATION_MS_MAX]</code> 之内;超出其中任一
+范围的取值应以 <code>ERR_BAD_ARGS</code> 拒绝,而不是钳位。</p>
+<p>这些是本标准的协议常量,对每一款产品都相同,而它们的取值就在这里:</p>
+<div class="tw"><table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>BURST_DURATION_MS_INFINITE</td><td>0</td></tr><tr><td>BURST_DURATION_MS_MAX</td><td>1000000</td></tr><tr><td>BURST_DURATION_MS_MIN</td><td>100</td></tr><tr><td>BURST_MAX_FIELDS</td><td>16</td></tr><tr><td>BURST_PERIOD_MS_MAX</td><td>1000</td></tr><tr><td>BURST_PERIOD_MS_MIN</td><td>10</td></tr></tbody></table></div>
+
+<p><code>BURST_DURATION_MS_INFINITE</code> 是一个保留的时长取值,不属于时长范围之内:它表示
+<em>没有</em>时长,以它启动的会话一直运行到主机把它停下为止(见下文<strong>停止</strong>)。它是低
+于 <code>BURST_DURATION_MS_MIN</code> 而设备仍应接受的那一个时长取值。<code>BURST_MAX_FIELDS</code>
+是该掩码所能携带的字段位数,这也是该掩码为 <code>u16</code> 的原因。</p>
+<p>周期与时长的单位都是毫秒。</p>
+<p><strong>字段掩码</strong>从标准的 <code>LOG_FIELD_*</code> 系列中选择信号,每个信号一位。这些位的分配
+是本标准的一部分:</p>
+<div class="tw"><table><thead><tr><th>Bit</th><th>Name</th></tr></thead><tbody><tr><td>0x01</td><td>LOG_FIELD_VDD</td></tr><tr><td>0x02</td><td>LOG_FIELD_VAT</td></tr><tr><td>0x04</td><td>LOG_FIELD_IAT</td></tr><tr><td>0x08</td><td>LOG_FIELD_PWR</td></tr><tr><td>0x10</td><td>LOG_FIELD_DUTY</td></tr><tr><td>0x20</td><td>LOG_FIELD_PROT</td></tr><tr><td>0x40</td><td>LOG_FIELD_RAT</td></tr></tbody></table></div>
+
+<p>每一位命名一个物理量,而本标准确定的就是这个物理量:</p>
+<ul>
+<li><code>LOG_FIELD_VDD</code> —— 设备自身的供电轨。</li>
+<li><code>LOG_FIELD_VAT</code> —— 被驱动负载两端的电压。</li>
+<li><code>LOG_FIELD_IAT</code> —— 流过它的电流。</li>
+<li><code>LOG_FIELD_PWR</code> —— 输送到它的功率。</li>
+<li><code>LOG_FIELD_DUTY</code> —— 驱动的占空比。</li>
+<li><code>LOG_FIELD_PROT</code> —— 设备的保护状态,以位域形式表示。</li>
+<li><code>LOG_FIELD_RAT</code> —— 设备算出的负载电阻。</li>
+</ul>
+<p>每个字段都以 <code>u16</code> 承载。有两件事由产品自行规定并记录在第二部分中:每个字段背
+后的<strong>标度、单位与推导方式</strong> —— 不知道产品的标度就去读取一个值的主机,得到的是
+一个数字,不是一次测量 —— 以及产品到底把<strong>哪些位接到了真实读数</strong>上。</p>
+<p>设备应接受一个自己没有接线的位而不报错,并应把该字段报告为零。高于已分配的最
+高位的那些位,本标准未作分配,而设备应把未分配的位完全按照未接线的位来对待:
+接受,并报告为零。这两条规则的存在,都是为了让针对较新产品编写的主机不至于在
+较旧的产品上失败。</p>
+<p><strong>帧布局。</strong> 每一条 <code>CMD_LOG_BURST_FRAME</code> 的载荷是
+<code>[STATUS][tick_ms u32][field u16] ...</code>:§4.2 的状态字节,恒为 <code>0x00</code>;然后是一
+个以毫秒为单位的 <code>u32</code> 时间戳;然后是<strong>所请求掩码中每一个置位的位</strong>各一个
+<code>u16</code>,按位号升序排列。次序由位号决定,不由主机选择;未置位的位在帧中不占任何
+<code>u16</code>。该时间戳在一个会话之内不应减小,其零点在一个会话之内也不应改变;零点落
+在哪里由产品自行规定。掩码不在帧中重复:主机应用它自己发出的那个掩码来解码。设
+备不应重排这些值,也不应遗漏其中任何一个。</p>
+<p><strong>停止。</strong> <code>CMD_LOG_BURST_STOP</code> 是双向两用的,而这正是调校组所复用的形态
+(§6.4):</p>
+<ul>
+<li><em>由主机发起</em> —— 一个请求。设备停止任何激活中的会话,并以该请求自己的 <code>SEQ</code>
+  应答。它应是幂等的:停止一个并未运行的会话是 OK,不是错误。这是结束一个无限
+  时长会话的唯一方式,它同时也能提前取消一个有限时长的会话。</li>
+<li><em>由设备发起</em> —— 非请求,<code>SEQ = 0</code>,在一个非零时长走完时发出。</li>
+</ul>
+<p>两者携带相同的载荷。主机应能由其中任一者判定自己的会话状态。</p>
+<p><strong>并发。</strong> 采样不应阻塞命令派发:会话激活期间,普通流量——包括主机自己的停止请
+求——必须能够继续流动。把扫描过程放在命令处理函数内部运行的设备无法被停止,不
+符合本标准。</p>
+<h2 id="8">8. 变量与参数</h2>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Request</th><th>Response</th><th>Notes</th></tr></thead><tbody><tr><td>0x50</td><td>CMD_VAR8_SET</td><td>[var_id u8][value u8]</td><td>[OK]</td><td></td></tr><tr><td>0x51</td><td>CMD_VAR8_GET</td><td>[var_id u8]</td><td>[OK][value u8]</td><td></td></tr><tr><td>0x52</td><td>CMD_VAR16_SET</td><td>[var_id u8][value u16 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x53</td><td>CMD_VAR16_GET</td><td>[var_id u8]</td><td>[OK][value u16 LE]</td><td></td></tr><tr><td>0x54</td><td>CMD_VAR32_SET</td><td>[var_id u8][value u32 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x55</td><td>CMD_VAR32_GET</td><td>[var_id u8]</td><td>[OK][value u32 LE]</td><td></td></tr><tr><td>0x56</td><td>CMD_PAR8_SET</td><td>[par_id u8][value u8]</td><td>[OK]</td><td></td></tr><tr><td>0x57</td><td>CMD_PAR8_GET</td><td>[par_id u8]</td><td>[OK][value u8]</td><td></td></tr><tr><td>0x58</td><td>CMD_PAR16_SET</td><td>[par_id u8][value u16 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x59</td><td>CMD_PAR16_GET</td><td>[par_id u8]</td><td>[OK][value u16 LE]</td><td></td></tr><tr><td>0x5A</td><td>CMD_PAR32_SET</td><td>[par_id u8][value u32 LE]</td><td>[OK]</td><td></td></tr><tr><td>0x5B</td><td>CMD_PAR32_GET</td><td>[par_id u8]</td><td>[OK][value u32 LE]</td><td></td></tr></tbody></table></div>
+
+<p>两个命令族提供对设备状态的按索引访问,各有三种宽度。二者的区别在于它们所触及
+的东西:</p>
+<ul>
+<li><strong><code>CMD_VAR*</code></strong> —— <strong>变量</strong>映射表:实时的运行状态。它主要是对固件实际正在做
+  什么的一个只读视图(状态、测量值、计时器、电量计),而不是它的第二份副本;
+  另有一小组可写的、由主机提供的输入,用来顶替设备本来会从自己硬件上读取的东
+  西。</li>
+<li><strong><code>CMD_PAR*</code></strong> —— <strong>参数</strong>映射表:设备的配置与门限存储。</li>
+</ul>
+<p>本组是<strong>可选的</strong>。两个族都不实现的产品应按 §9.1 应答全部十二个操作码。产品可以
+只实现其中一族而不实现另一族,也可以只实现其中一种宽度而不实现其他宽度 —— 但已
+实现的某一种宽度应同时实现它的 <code>SET</code> 与它的 <code>GET</code>,因为一个能写却读不回来的值
+无法被核对。</p>
+<p>两个族共用同一种形态。<code>SET</code> 接受 <code>[id u8][value]</code>;<code>GET</code> 接受 <code>[id u8]</code> 并应答
+<code>[OK][value]</code>;该值按命令的宽度为 <code>u8</code>、<code>u16</code> 或 <code>u32</code>,小端。这三种宽度是三个
+互相独立的标识符空间 —— 8 位空间的 <code>id 3</code> 与 16 位空间的 <code>id 3</code> 是不相干的两个
+槽位。</p>
+<p>要求的行为:</p>
+<ul>
+<li>达到或超过该宽度表大小的 <code>id</code> 应被应答 <code>ERR_BAD_ARGS</code>,而且是在尝试任何派发
+  之前。</li>
+<li>对只读槽位的 <code>SET</code> 应被应答 <code>ERR_BAD_ARGS</code>。它不应存储该值,也不应应答 OK ——
+  主机无法把一次被静默忽略的写入与一次成功的写入区分开。</li>
+<li>符合本标准的<strong>设备</strong>应公布它对每一个可写槽位所接受的取值范围。这个范围是设备
+  对自身的陈述:接受其宽度所能容纳的一切取值的槽位,就公布这一点;接受得更少的
+  槽位,就公布它所接受的那些。本标准不规定该公布放在哪里、采取什么形式 —— 数据
+  手册、产品手册,或者第二部分那种形式的附录都可以 —— 只要求设备对自身取值范围
+  的陈述确实存在,并且是主机所依据的那一份。主机工具在自己那份标识符映射表副本
+  里保留的限制,是那个工具的输入便利设施,运行它的人可以调整,并不是设备的取值
+  范围 —— 主机不应把它当作设备的取值范围。</li>
+<li>携带一个槽位并不接受的取值的 <code>SET</code> 应被应答 <code>ERR_BAD_ARGS</code>。设备不应对该值作
+  掩码处理或钳位,也不应对一个自己随后就丢弃的取值应答 OK:请求了不可能之事的
+  主机是有缺陷的,而上述三种结果中的每一种都递给它一批看似合理的读数,取代了本
+  可以让该缺陷浮出水面的那个错误。</li>
+<li>对同一槽位成功 <code>SET</code> 之后再对它发出的 <code>GET</code>,应返回被设置的那个值,除非设备
+  自己在此期间改变了它。这是该规则在线路上可观察的形式,也是主机唯一能核对的形
+  式:值存放在哪里是设备自己的事,但一次读不回来的写入,与一次被丢弃的写入无法
+  区分。做不到这一点的槽位应以 <code>ERR_BAD_ARGS</code> 拒绝 <code>SET</code>,并应被声明为只读。</li>
+</ul>
+<p>最后这两条,从线路上看是同一条规则,而且它就是主机所能观察到的全部:<strong>在一次
+被应答为 OK 的 <code>SET</code> 之后,对该槽位的 <code>GET</code> 返回被设置的那个值;而不肯接受某个
+取值的设备,把这件事说出来,而不是应答 OK。</strong> 不存在符合本标准的第三种结果 ——
+没有哪个 OK 可以意味着设备留下的是别的东西,也没有哪个 OK 可以意味着它什么也没
+留下。</p>
+<p>这条规则所禁止的那种失效很容易在无意中造出来,而且值得点名,因为它根本不是一个
+协议层面的错误。当某个槽位的设置函数在设备内部拒绝了一个取值,却没有办法把这次
+拒绝报告回命令处理函数时 —— 一个返回 <code>void</code> 的设置函数是常见的形态 —— 这次写入
+就被丢掉了,而处理函数因为无可报告,就应答了 OK。在某次 <code>GET</code> 与最后写入的值不
+一致之前,线路上没有任何东西与之矛盾,而一台从不回读该槽位的主机则根本不会发现
+这件事。那次拒绝必须到达组装响应的那一层,而那一层必须发出 <code>ERR_BAD_ARGS</code>。</p>
+<h3 id="81">8.1 标识符映射表由产品自行规定,而这一点是承重的</h3>
+<p>本标准定义命令、宽度以及出错行为。它<strong>不</strong>定义哪个槽位号表示哪个物理量。那些
+映射表按产品分别指派,并记录在第二部分中。</p>
+<p>它们在产品之间<strong>不可移植</strong>,而且协议无法防范用错映射表。在一款产品上有效的槽位
+号,极有可能在另一款产品上同样有效,却寻址到一个完全不同的字段 —— 于是设备执行
+了错误的写入,并应答 <strong>OK</strong>。任何一层都没有可供观察的错误。因此:</p>
+<ul>
+<li>主机应在发出任何 <code>VAR</code>/<code>PAR</code> 访问之前先确定自己在与哪一款产品、哪一个命令集
+  版本对话(<code>CMD_INFO</code>、<code>CMD_GET_VERSION</code>),并应使用那款产品自己的映射表。</li>
+<li>产品应以追加的方式指派新槽位。给已有槽位重新编号会改变一台未作改动的主机所写
+  入的对象,属于命令集的 MAJOR 变更(§9.3)。</li>
+</ul>
+<h3 id="82">8.2 两个操作码触及同一字段时,它们应给出一致的答案</h3>
+<p>本标准定义了不止一条通往设备可配置状态的路径:上面的参数族,以及在实现了调校组
+的产品上,该组自己的参数命令(§6.4)。产品可以通过其中不止一条路径暴露同一个底
+层字段。</p>
+<p>一旦如此,那些操作码对该字段应给出一致的答案。它们应就该字段是否可写达成一致,
+并应对它接受相同的取值。</p>
+<p>没有这条规则,一款产品就可以在同一个编译产物中对同一个字段给出两种不同的答案:
+通过一个操作码写入被接受并应答 OK,而完全相同的写入通过另一个操作码却被
+<code>ERR_BAD_ARGS</code> 拒绝。主机无从化解这一矛盾。就各自的前提而言,两个答案都不算错
+——每个处理函数施加的都是另一个并不知道的规则——而帧中没有任何东西说明哪一个描述
+了这台设备,于是主机只能通过第三条路径回读来判定该字段是否接受了那个取值。</p>
+<p>可写性是字段的属性,不是主机恰好经由的那个操作码的属性,而主机有权确定它一次就
+处处依赖它。想让某个字段只能由一个操作码触及的产品,应以不把它映射进另一个操作
+码来表达这一点,而不是映射进去再在那里拒绝它。</p>
+<h2 id="9">9. 操作码空间、保留与演进</h2>
+<h3 id="91">9.1 未分配与未实现的操作码</h3>
+<p>在 <code>OPMODE_NORMAL</code> 之外,设备应以 <code>[ERR][ERR_BAD_ARGS]</code> 应答它不予处理的<strong>每
+一个</strong>操作码。这同等地涵盖两种情形:本标准尚未分配的操作码,以及本标准已分配但
+本产品没有实现的操作码。沉默不是符合本标准的答案 —— 主机必须能够把一条不受支持
+的命令与一条已死的链路区分开。</p>
+<p>唯一的例外是 <code>OPMODE_NORMAL</code> 的静默丢弃行为(§5.2)。</p>
+<p><code>ERR_UNKNOWN</code> 正是为此而存在于核心错误码空间中,能够把无法识别的操作码与错误参
+数区分开的设备可以使用它。主机应把这两个码都接受为"这台设备不会做那件事"。</p>
+<h3 id="92">9.2 区段保留</h3>
+<p>操作码字节被划分为两个区段,而正是这一划分让一条物理链路能够承载两场对话:</p>
+<table>
+<thead>
+<tr>
+<th>区段</th>
+<th>归属</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code>-<code>0xBF</code></td>
+<td>设备(产品固件)。新命令在其中向上生长。</td>
+</tr>
+<tr>
+<td><code>0xC0</code>-<code>0xFF</code></td>
+<td><strong>保留给桥接层。</strong> 产品不应在此处定义命令。</td>
+</tr>
+</tbody>
+</table>
+<p>桥接器仅依据操作码字节路由:在 <code>0xC0</code> 及以上它自己应答该帧,在 <code>0xC0</code> 以下它把
+原始的编码字节原封不动地转发给设备。因此,定义在 <code>0xC0</code> 或以上的产品命令,只要
+链路中串接了桥接器就永远无法到达 —— 而且这种失效是静默的。没有可供观察的错误:
+桥接器把该帧吃掉并应答了它,设备从未见到它,而主机从错误的设备那里得到一条看似
+合理的回复。</p>
+<p>该保留是整个层共用的一个区段,不是某一块板子的区段。每一个桥接器实现都声明同一
+张表。</p>
+<p>在设备自己的区段之内,操作码是分组的,产品宜把新命令放进与其功能相匹配的组里:</p>
+<table>
+<thead>
+<tr>
+<th>基址</th>
+<th>组</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code></td>
+<td>身份、模式、活跃性(§6.1)</td>
+</tr>
+<tr>
+<td><code>0x10</code></td>
+<td>设备控制(§6.2)</td>
+</tr>
+<tr>
+<td><code>0x20</code></td>
+<td>寄存器访问(§6.3)</td>
+</tr>
+<tr>
+<td><code>0x30</code></td>
+<td>文本日志(§7.1)</td>
+</tr>
+<tr>
+<td><code>0x40</code></td>
+<td>二进制遥测(§7.2)</td>
+</tr>
+<tr>
+<td><code>0x50</code></td>
+<td>变量与参数(§8)</td>
+</tr>
+<tr>
+<td><code>0x60</code></td>
+<td>显示(§6.5)</td>
+</tr>
+<tr>
+<td><code>0x70</code></td>
+<td>调校(§6.4)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="93">9.3 版本管理</h3>
+<p><strong>命令集版本</strong>是一个 <code>MAJOR.MINOR.PATCH</code> 三元组,命名本标准的操作码映射 —— 整
+张映射,两个区段都包括在内。它不是任何固件的构建号,而且它与固件构建号各自独立
+地推进。</p>
+<ul>
+<li>当某个已有操作码改变了它的编号或含义时,<strong>MAJOR</strong> 变更。否则,针对较旧那张表
+  编写的主机会到达另一个处理函数并得到一个看似合理的答案,而这恰恰是版本号存在
+  的意义所在:让这种失效可被检出。</li>
+<li>当有操作码被新增,而所有已有操作码的含义保持不变时,<strong>MINOR</strong> 变更。</li>
+<li><strong>PATCH</strong> 用于对线路没有影响的变更。</li>
+</ul>
+<p>有两条不同的规则使用这个号码,而把二者混为一谈,正是一套真实系统因为一个根本不
+是故障的差异而被拒之门外的原因。</p>
+<p><strong>发布记账 —— 一个构建产物的属性。</strong> 在同一个实现的同一次发布之内,命令集版本
+常量的每一份副本都应携带同一个取值,而且在它变更时每一份副本都应一同变更。这个
+号码在不止一个代码仓库中的多份固件与主机工具里重复出现,因此这些副本必须逐一数
+清,而不能想当然;第二部分为它所涵盖的产品列出了它们。一次发布若为自己的命令集
+版本发出了两个不同的取值,即为构建有误。这条规则的任何方面在线路上都不可观察。</p>
+<p><strong>线路兼容性 —— 一条链路的属性。</strong> 同一条链路上的两个实现可以报告不同的命令集
+版本,而这一差异本身并不是故障。报告较旧版本的设备,是在如实陈述它是针对哪一张
+操作码表构建的,而这正是值得掌握的事实。主机:</p>
+<ul>
+<li>在依赖 §6.1 之外的任何操作码之前,宜读取对端的版本(<code>CMD_GET_VERSION</code> 配以
+  <code>VER_SEL_CMD_SET</code>,§6.1);</li>
+<li>在出现 MAJOR 差异时宜拒绝继续,因为某个操作码可能已在它脚下改变了编号或含义,
+  而得到的答案看上去都很合理;</li>
+<li>在出现 MINOR 或 PATCH 差异时可以继续,并且此时宜把自己限制在两个版本中较低的
+  那个所定义的操作码之内。按定义 MINOR 是追加式的,因此较旧的那一端拥有的命令
+  更少,而不是不同。</li>
+</ul>
+<h2 id="10">10. 符合性检查表</h2>
+<p>一台符合本标准的<strong>设备</strong>,对下列每一项适用于它的条目都回答"是"。</p>
+<p><strong>某一条目不适用时。</strong> 有五个命令组是可选的:寄存器访问(§6.3)、调校(§6.4)、
+显示(§6.5)、流式传输(§7),以及变量与参数(§8)。检验某个设备没有实现的组的
+条目,回答为<strong>不适用</strong>,而带有不适用条目的设备仍然符合本标准 —— 前提是第 25 条
+对该组的那些操作码成立,正是它使得"未实现"成为主机可以自行观察到的事,而不是
+必须由别人告知的事。传输与成帧、请求与响应、模式这三节下的条目,以及第 22、23、
+24、25、26、27 条,任何时候都不会不适用:那些是对每一台设备的要求。</p>
+<p><strong>传输与成帧</strong></p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>串行链路为 8 位数据位、无校验位、1 位停止位、无流控,速率为双方约定的速率。</td>
+<td>2</td>
+</tr>
+<tr>
+<td>2</td>
+<td>不要求主机提供帧间空隙、线路断开或前导码,并且接受背靠背的帧。</td>
+<td>2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>每一帧都经 COBS 编码并带一个尾随的 <code>0x00</code> 分隔符,接收时把 <code>0x00</code> 视为无条件的帧边界。</td>
+<td>3.4</td>
+</tr>
+<tr>
+<td>4</td>
+<td>编码时,每一段完整的 254 字节无零连续段都以一个 <code>0xFF</code> 码发出,不在原本没有零的地方引入 <code>0x00</code>,而且最后一个分组即使没有数据也带一个码字节。</td>
+<td>3.4.1</td>
+</tr>
+<tr>
+<td>5</td>
+<td>解码时,在每一个码不是 <code>0xFF</code> 的分组之后恢复一个 <code>0x00</code>,而在其他任何分组之后都不恢复 —— 包括帧中的最后一个分组。</td>
+<td>3.4.2</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>LEN</code> 计入 <code>CMD</code> + <code>SEQ</code> + 载荷 + CRC,并与解码后的长度按相等判定核对。</td>
+<td>3.2</td>
+</tr>
+<tr>
+<td>7</td>
+<td>CRC 为 CRC-16/CCITT-FALSE,并在 <code>"123456789"</code> 上重现 <code>0x29B1</code>。</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>8</td>
+<td>CRC 覆盖解码后的帧,自第一个 <code>LEN</code> 字节起至最后一个载荷字节止,并排除 CRC 字节本身。</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>9</td>
+<td>COBS 解码、CRC 检查或 <code>LEN</code> 检查未通过的帧被静默丢弃,不作任何响应。</td>
+<td>3.7</td>
+</tr>
+<tr>
+<td>10</td>
+<td>所接受的最大编码帧长度已公布,而更长的帧像任何其他无法通过校验的帧一样被静默丢弃。</td>
+<td>3.8</td>
+</tr>
+</tbody>
+</table>
+<p><strong>请求与响应</strong></p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>11</td>
+<td>每一个被处理的请求产生恰好一个响应,回送它的 <code>CMD</code> 与它的 <code>SEQ</code>。</td>
+<td>4.1</td>
+</tr>
+<tr>
+<td>12</td>
+<td>非请求帧携带 <code>SEQ = 0</code>。</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>13</td>
+<td>设备从不解释或校验 <code>SEQ</code>。</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>14</td>
+<td>每一个响应载荷都以一个状态字节开头,而错误响应在 <code>DATA[0]</code> 中携带一个错误码。</td>
+<td>4.2</td>
+</tr>
+<tr>
+<td>15</td>
+<td>每一个核心错误码只用于 §4.3 为它定义的那一种情形,而任何产品自有的码都在 <code>0x10</code> 或以上。</td>
+<td>4.3、4.4</td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>ERR_BAD_LEN</code> 用于短载荷,<code>ERR_BAD_ARGS</code> 用于错误取值,二者绝不互换。</td>
+<td>4.3</td>
+</tr>
+<tr>
+<td>17</td>
+<td>长于命令所要求长度的载荷被接受且其多余部分被忽略,绝不应答 <code>ERR_BAD_LEN</code>。</td>
+<td>4.3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>模式</strong></p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>18</td>
+<td>设备以 <code>OPMODE_NORMAL</code> 启动。</td>
+<td>5.1</td>
+</tr>
+<tr>
+<td>19</td>
+<td><code>CMD_SET_MODE</code> 在每一种模式下都被处理,而未实现的模式取值以 <code>ERR_BAD_ARGS</code> 拒绝。</td>
+<td>5.1</td>
+</tr>
+<tr>
+<td>20</td>
+<td>在 <code>OPMODE_NORMAL</code> 下,<code>CMD_PING</code>、<code>CMD_INFO</code>、<code>CMD_GET_VERSION</code>、<code>CMD_SET_MODE</code>、<code>CMD_DBG_ONLINE</code> 和 <code>CMD_RESET</code> 被应答,其他一切被静默丢弃。</td>
+<td>5.2</td>
+</tr>
+<tr>
+<td>21</td>
+<td>任何非默认模式在 <code>ONLINE_TIMEOUT_MS</code> 内没有帧被接受之后,无条件退回 <code>OPMODE_NORMAL</code>。</td>
+<td>5.3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>命令</strong></p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22</td>
+<td>§6.1 中的每一个命令都已实现,并在每一种模式下被应答。</td>
+<td>6.1</td>
+</tr>
+<tr>
+<td>23</td>
+<td><code>CMD_GET_VERSION</code> 实现了 <code>VER_SEL_FW</code> 与 <code>VER_SEL_CMD_SET</code> 两者,回送收到的选择子,对其他任何选择子应答 <code>ERR_BAD_ARGS</code>,并在 <code>VER_SEL_CMD_SET</code> 下报告 §9.3 的版本。</td>
+<td>6.1、9.3</td>
+</tr>
+<tr>
+<td>24</td>
+<td><code>CMD_RESET</code> 在复位之前作出响应。</td>
+<td>6.2</td>
+</tr>
+<tr>
+<td>25</td>
+<td>在 <code>OPMODE_NORMAL</code> 之外,设备不予处理的每一个操作码都被应答 <code>[ERR][ERR_BAD_ARGS]</code>,或者在设备能够把无法识别的操作码与错误参数区分开时被应答 <code>[ERR][ERR_UNKNOWN]</code>。</td>
+<td>9.1</td>
+</tr>
+<tr>
+<td>26</td>
+<td>没有命令定义在 <code>0xC0</code> 或以上。</td>
+<td>9.2</td>
+</tr>
+<tr>
+<td>27</td>
+<td>本次发布中命令集版本常量的每一份副本都携带同一个取值。</td>
+<td>9.3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>流式传输</strong> —— 对既不实现 §7.1 也不实现 §7.2 的设备不适用。</p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>28</td>
+<td>日志帧与遥测帧以 <code>SEQ = 0</code> 发出。</td>
+<td>7</td>
+</tr>
+<tr>
+<td>29</td>
+<td>非请求帧的载荷以状态字节开头,而帧自身的内容从 <code>DATA[0]</code> 开始。</td>
+<td>7、4.2</td>
+</tr>
+<tr>
+<td>30</td>
+<td><code>CMD_LOG_START</code> 在日志功能被武装之前得到确认,而该确认排在任何日志内容之前。</td>
+<td>7.1</td>
+</tr>
+<tr>
+<td>31</td>
+<td>超出各自允许范围的突发周期或时长以 <code>ERR_BAD_ARGS</code> 拒绝而不是钳位,并且 <code>BURST_DURATION_MS_INFINITE</code> 被接受。</td>
+<td>7.2</td>
+</tr>
+<tr>
+<td>32</td>
+<td>突发帧为掩码中每一个置位的位携带一个 <code>u16</code>,按位序升序排列,而未接线或未分配的位报告为零而不是报错。</td>
+<td>7.2</td>
+</tr>
+<tr>
+<td>33</td>
+<td>停止或结束命令是幂等的,由主机发起时回送请求的 <code>SEQ</code>,并且在设备自行结束会话时也以 <code>SEQ = 0</code> 非请求地发出。</td>
+<td>6.4、7.2</td>
+</tr>
+<tr>
+<td>34</td>
+<td>流式会话激活期间,命令派发保持工作。</td>
+<td>7.2</td>
+</tr>
+</tbody>
+</table>
+<p><strong>变量与参数</strong> —— 对两族都不实现的设备不适用。</p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>35</td>
+<td>超出范围的标识符以 <code>ERR_BAD_ARGS</code> 拒绝。</td>
+<td>8</td>
+</tr>
+<tr>
+<td>36</td>
+<td>对只读槽位的写入以 <code>ERR_BAD_ARGS</code> 拒绝,且什么也不存储。</td>
+<td>8</td>
+</tr>
+<tr>
+<td>37</td>
+<td>设备公布它对每一个可写槽位所接受的取值范围,而它不接受的取值以 <code>ERR_BAD_ARGS</code> 拒绝 —— 绝不钳位、绝不作掩码处理,也绝不应答 OK 之后丢弃。</td>
+<td>8</td>
+</tr>
+<tr>
+<td>38</td>
+<td>对同一槽位成功 <code>SET</code> 之后的 <code>GET</code> 返回被设置的那个值。</td>
+<td>8</td>
+</tr>
+<tr>
+<td>39</td>
+<td>槽位编号仅追加,任何重新编号都伴随一次命令集 MAJOR 版本变更。</td>
+<td>8.1、9.3</td>
+</tr>
+<tr>
+<td>40</td>
+<td>一个字段可经由不止一个操作码触及时,那些操作码就它是否可写以及它们所接受的取值达成一致。</td>
+<td>8.2</td>
+</tr>
+</tbody>
+</table>
+<p>一台符合本标准的<strong>主机</strong>还应对下列各条回答"是"。</p>
+<table>
+<thead>
+<tr>
+<th>条目</th>
+<th>要求</th>
+<th>参见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>41</td>
+<td>它按 <code>SEQ</code> 匹配响应,并且不假定请求的顺序。</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>42</td>
+<td>它容忍非请求帧在任意时刻到达,包括在它自己的请求与对应响应之间。</td>
+<td>2、7</td>
+</tr>
+<tr>
+<td>43</td>
+<td>它容忍一个无法识别的状态字节而不丢失帧同步。</td>
+<td>4.2</td>
+</tr>
+<tr>
+<td>44</td>
+<td>它把非请求帧的第一个载荷字节读作状态字节,并从 <code>DATA[0]</code> 取该帧的内容。</td>
+<td>7</td>
+</tr>
+<tr>
+<td>45</td>
+<td>对于损坏到达的帧,它容忍两种答案:来自设备的沉默,以及来自桥接器或引导加载程序的 <code>[ERR][ERR_BAD_CRC]</code>。</td>
+<td>3.7</td>
+</tr>
+<tr>
+<td>46</td>
+<td>它不发送大于设备所公布最大值的帧,也不以试验方式确定该最大值。</td>
+<td>3.8</td>
+</tr>
+<tr>
+<td>47</td>
+<td>它在使用任何标识符映射表之前先读取设备的身份与命令集版本,并使用那款产品自己的映射表。</td>
+<td>8.1</td>
+</tr>
+</tbody>
+</table>
+<h1 id="celfras-standard-protocol_1">Celfras Standard Protocol —— 第二部分:产品</h1>
+<p>第一部分是标准。本部分是各款产品如何运用第一部分留给它们的余地的记录:§8 背后
+的标识符映射表、§3.8 与 §5.3 声明为由产品自行规定的那些常量的取值、产品实现了
+哪些可选命令组,以及产品的行为在哪里偏离了第一部分的要求。</p>
+<p>本部分中没有任何内容放宽第一部分的任何要求,也没有任何内容是对新实现的要求。一
+篇附录陈述的是关于某一款产品在某一时刻的事实。当这样一条事实被证明是<em>每一个</em>实
+现者都需要的时,它就属于第一部分,并被移入第一部分,而不是从此处引用。</p>
+<p><strong>本部分承载什么,以及不承载什么。</strong> 它承载结构:标识符、名称、单位、访问权限,
+以及每个槽位是干什么用的。它不承载产品写进这些槽位里的数字。标准定义标识符 14
+表示什么;某一款产品在那里存放了什么,是那款产品自己的事,它承载在本文档的内部
+版本以及该产品自己的文档中。内部版本会为每个槽位增设一列给出其内置取值,本版本
+则干脆没有那一列,而且本文中任何地方都不出现门限值。</p>
+<p>那条规则针对的是标识符映射表的内容。它不是一条针对一切数字的规则:凡是第一部分
+要求设备公布它自身的某个常量,以便主机能够与它通信的地方 —— §3.8 的最大编码帧
+长、§5.3 的链路活跃性间隔 —— 其取值都在此处给出,因为主机没有它就用不了这条链
+路。本部分中出现的一个光秃秃的数字,应读作这类链路常量之一,绝不可读作某张映射
+表里的门限值。</p>
+<p>本部分论及某个槽位时,只称呼该槽位的名字,而把编号留给它上方的那张表。那些表是
+从产品本身生成的;把某个 id 重新敲进一句话里,就等于把同一个事实存了第二份副本,
+而本部分已经经历过一次重新编号了(A.2)。</p>
+<h2 id="a-cfs-ecig-suite">A. CFS-ECIG-SUITE</h2>
+<p>第一部分的参考实现,也是本文档中每一张生成的标识符表所提取自的那款产品。</p>
+<h3 id="a1">A.1 本产品实现了什么</h3>
+<p><strong>产品常量。</strong> 第一部分把其中两个交给第二部分:</p>
+<ul>
+<li>所接受的最大编码帧长度,不含分隔符(§3.8),在出货的 CWM2032 构建上为
+  <strong>32 字节</strong>。累积缓冲区是在同一份固件之内按芯片分别定尺寸的,因此换一颗芯片
+  构建出来的就是另一个数字;主机面对的是一块板子,不是一棵源码树,而这里给出的
+  是那块板子的数字。</li>
+<li>链路活跃性间隔 <code>ONLINE_TIMEOUT_MS</code>(§5.3)为 <strong>5000 ms</strong>。</li>
+</ul>
+<p><strong>可选组。</strong> 它实现了文本日志(§7.1)、二进制遥测(§7.2)、调校(§6.4),以及
+变量族与参数族在全部三种宽度上的实现(§8)。它<strong>没有</strong>实现寄存器访问(§6.3)或
+显示(§6.5):那些操作码在它的头文件中有声明,但没有任何东西派发它们,因此它们
+像设备不予处理的任何其他操作码一样按 §9.1 被应答。</p>
+<p><strong>§6.2 的那处偏离就是这款产品的。</strong> <code>CMD_ACTIVATE</code>、<code>CMD_DEACTIVATE</code>、
+<code>CMD_START_HEATING</code> 和 <code>CMD_STOP_HEATING</code> 就是第一部分 §6.2 所点名的那些桩:无
+论有没有事情发生,它们都应答 <code>[OK]</code>。来自这四个操作码的 <code>[OK]</code> 不构成设备已经动
+作过的证据。</p>
+<p><strong>在这里 <code>CMD_SET_MODE</code> 还会驱动日志参数。</strong> 进入 <code>OPMODE_NORMAL</code> 或
+<code>OPMODE_DEBUG</code> 会分别强制把 A.3 的 <code>LOG_ENABLE</code> 参数槽位置为关闭和打开,因此进
+入 <code>OPMODE_DEBUG</code> 之后的第一行日志无需 <code>CMD_LOG_START</code> 就会到达。这是 2026-07-10
+作出的一个刻意选择,也是附录 B 拿来作对照的那一处行为。</p>
+<h3 id="a2">A.2 变量映射表</h3>
+<p>8 位空间:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th></tr></thead><tbody><tr><td>0</td><td>EXT_CTRL_STATUS</td><td>EXT_CTRL_* bits</td></tr><tr><td>1</td><td>EXT_HEATING_PWM_DUTY</td><td>%</td></tr><tr><td>2</td><td>OP_MODE</td><td>OPMODE_*</td></tr><tr><td>3</td><td>STATE</td><td>STATE_E</td></tr><tr><td>4</td><td>OIL_MODE</td><td>heating profile idx</td></tr><tr><td>5</td><td>COIL_SEL</td><td>H_COIL*_MASK</td></tr><tr><td>6</td><td>EVENT_FLAG</td><td>EVENT_MASK_*</td></tr><tr><td>7</td><td>EVENT_TOGGLE_FLAG</td><td>EVENT_MASK_*</td></tr><tr><td>8</td><td>BATTERY_GUAGE</td><td>%</td></tr><tr><td>9</td><td>OIL_GUAGE</td><td>%</td></tr><tr><td>10</td><td>EVENT_EMUL_MASK</td><td>EVENT_MASK_*</td></tr><tr><td>11</td><td>EVENT_EMUL_ENABLE</td><td>0/1</td></tr></tbody></table></div>
+
+<p>16 位空间:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th></tr></thead><tbody><tr><td>0</td><td>EXT_HEATING_POWER</td><td>mW (CP) / mV target_vatrms (CV)</td></tr><tr><td>1</td><td>PROT_TYPE</td><td>PROTECT_MASK_*</td></tr><tr><td>2</td><td>CHARGING_TIME</td><td>min</td></tr><tr><td>3</td><td>VAT</td><td>mV</td></tr><tr><td>4</td><td>IAT0</td><td>mA</td></tr><tr><td>5</td><td>PAT0</td><td>mW</td></tr><tr><td>6</td><td>RAT0</td><td>mohm</td></tr><tr><td>7</td><td>DUTY0</td><td>%</td></tr></tbody></table></div>
+
+<p>32 位空间:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th></tr></thead><tbody><tr><td>0</td><td>STATE_TIME</td><td>ms</td></tr><tr><td>1</td><td>DISP_TIME</td><td>ms</td></tr><tr><td>2</td><td>ONLINE_ELAPSED</td><td>ms</td></tr><tr><td>3</td><td>HEATING_TIME</td><td>ms</td></tr><tr><td>4</td><td>LED_DAISY_STARTED</td><td>bursts</td></tr><tr><td>5</td><td>LED_DAISY_DONE</td><td>bursts</td></tr></tbody></table></div>
+
+<p>这张映射表的大部分,正是 §8 所描述的、对固件实时状态的只读视图:状态机的当前状
+态及其计时器、设备正在进行的测量、它正在计算的各种电量估计。对其中任何一项的
+<code>SET</code> 都应答 <code>ERR_BAD_ARGS</code>。</p>
+<p>有五个槽位可写,而其中每一个都是主机提供的一个<strong>输入</strong>,用来顶替固件本来会从自
+己硬件上读取的东西 —— 绝不是设备控制状态的第二份副本。这样一来,量产控制代码就
+可以原样运行,而不必长出只为主机而设的分支。</p>
+<ul>
+<li><code>EXT_CTRL_STATUS</code>、<code>EXT_HEATING_PWM_DUTY</code> 和 <code>EXT_HEATING_POWER</code> 构成一个外部
+  控制接口;它的各位表示什么、每个槽位接受什么、主机在驱动它时必须做什么,都在
+  该产品自己的文档中,不在此处。</li>
+<li><code>EVENT_EMUL_MASK</code> 和 <code>EVENT_EMUL_ENABLE</code> 让主机得以顶替设备自己的事件输入。两
+  者都接受其槽位的全宽取值。</li>
+</ul>
+<p>主机在信任某个读数之前还需要知道另外三件事:</p>
+<ul>
+<li><strong>16 位映射表中的测量部分假定只有一根加热线圈。</strong> 那些按线圈划分的槽位以线圈
+  0 命名,因为这块板子只有那一根;双线圈的板子会在它们之后追加自己的线圈 1 槽位,
+  而不是给这些重新编号。</li>
+<li><strong>某个槽位读到的可能是零而不是一次测量,这取决于构建配置。</strong> 在恒压构建上
+  <code>RAT0</code> 没有电流采样通道可读,而在菊花链显示构建上 <code>DISP_TIME</code> 没有按状态划分
+  的时间线。那里的零表示<em>本构建未接线</em>,与它对一个未接线的遥测位所表示的含义完
+  全一样(§7.2);它不是一次读数为零的测量。</li>
+<li><strong>变量编号在迄今造出的各块板子上恰好相同,而这是巧合而非保证。</strong> §8.1 适用于
+  这张映射表,正如它适用于参数映射表:这种一致是历史的偶然,它对下一块板子什么
+  也不承诺,也不能使任何事情变得安全。主机在使用其中任何一张映射表之前,仍然要
+  先确定自己在与哪一款产品对话。</li>
+</ul>
+<p>这张映射表曾在 2026-07-29 被重新编号过一次,当时外部控制区块是插到 8 位与 16 位
+空间的最前面,而不是追加到末尾。那件事发生在附录 E 的命令集编号之前,因此没有任
+何版本差异标记它;§8.1 的仅追加规则自那以后一直成立,而一份较旧的映射表副本会寻
+址到错误的槽位。</p>
+<h3 id="a3">A.3 参数映射表</h3>
+<p>8 位空间:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th><th>Access</th></tr></thead><tbody><tr><td>0</td><td>LOG_ENABLE</td><td>0/1</td><td>rw</td></tr></tbody></table></div>
+
+<p>16 位空间:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th><th>Access</th></tr></thead><tbody><tr><td>0</td><td>VDD</td><td>mV</td><td>ro</td></tr><tr><td>1</td><td>VAT0</td><td>mV</td><td>ro</td></tr><tr><td>2</td><td>IAT0</td><td>mA</td><td>ro</td></tr><tr><td>3</td><td>LED_BREATH_PERIOD_MS</td><td>ms</td><td>rw</td></tr><tr><td>4</td><td>UVLO_HEAT_INIT_TH</td><td>mV</td><td>rw</td></tr><tr><td>5</td><td>UVLO_HEAT_TH</td><td>mV</td><td>rw</td></tr><tr><td>6</td><td>LONG_PUFF_TH</td><td>ms</td><td>rw</td></tr><tr><td>7</td><td>CHG_OVP_TH</td><td>mV</td><td>rw</td></tr><tr><td>8</td><td>CHG_TIMEOUT_TH</td><td>min</td><td>rw</td></tr><tr><td>9</td><td>SHORT_COIL1_TH</td><td>mV</td><td>rw</td></tr><tr><td>10</td><td>SHORT_COIL2_TH</td><td>mV</td><td>ro</td></tr><tr><td>11</td><td>SHORT_COIL_RST_TH</td><td>mV</td><td>rw</td></tr><tr><td>12</td><td>OPEN_COIL1_TH</td><td>mV</td><td>rw</td></tr><tr><td>13</td><td>OPEN_COIL2_TH</td><td>mV</td><td>ro</td></tr><tr><td>14</td><td>DRY_PUFF_ABS_TEMP_TH</td><td>degC</td><td>rw</td></tr><tr><td>15</td><td>DRY_PUFF_REL_SLOPE_TH</td><td>degC/sec</td><td>rw</td></tr></tbody></table></div>
+
+<p>32 位空间:</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th><th>Unit</th><th>Access</th></tr></thead><tbody><tr><td>0</td><td>HEATING_TIMEOUT_TH</td><td>ms</td><td>rw</td></tr></tbody></table></div>
+
+<p><strong>这些编号是这款产品的,而且它们不可移植。</strong> 这是第二部分中后果最严重的一个事
+实,而 §8.1 陈述了它背后的规则。每一块板子都独立地为自己的参数枚举编号,因此同
+一个 id 在另一款产品上寻址的是另一个字段 —— 而且没有任何东西能检出这件事。指向
+错误板子的主机读到的是错误的测量值,更糟的是,它写入的是错误的门限:固件会执行
+那次写入,并应答 <strong>OK</strong>。任何一层都没有错误,没有对不上的校验和,事后日志里也找
+不到任何线索。唯一的防线就是 §8.1 所要求的那一条 —— 先读取身份与命令集版本,并
+使用那款产品自己的映射表。</p>
+<p><strong>大多数可写槽位只在调校构建中才是开放的。</strong> 那些保护门限 —— 16 位与 32 位映射
+表中除 <code>LED_BREATH_PERIOD_MS</code> 之外的每一个 <code>rw</code> 槽位 —— 写入的是设备的参数块,而
+在发布构建中那个块是 <code>const</code> 的。在那里,它们中的每一个都应答 <code>ERR_BAD_ARGS</code> 而
+不是存储。这是出货单元的预期行为,不是故障,也不是回归:发布构建就是门限已经等
+于产品标定结果的那种构建。上面各表给出的是各槽位在调校构建中的访问权限,而调校
+构建正是其映射表值得记录的那一个。有两个可写槽位不受影响,因为它们根本不触及参
+数块:<code>LOG_ENABLE</code> 和 <code>LED_BREATH_PERIOD_MS</code> 经由服务调用生效,在每一种构建中都
+保持可写。</p>
+<p><strong>有两个槽位是为这块板子并不具备的第二根加热线圈保留的。</strong> 声明 <code>SHORT_COIL2_TH</code>
+和 <code>OPEN_COIL2_TH</code>,是为了让编号已经与双线圈构建对得上。它们在每一种构建中都读
+作零并拒绝每一次写入 —— 这不是上面那种调校构建效应,选择调校构建也不会打开它们。</p>
+<p>关于个别槽位还有四件较小的事实:</p>
+<ul>
+<li><code>SHORT_COIL1_TH</code> 与 <code>OPEN_COIL1_TH</code> 是一对,固件是把它们互相比较,而不是各自与
+  一个固定界限比较:两者针对同一个实测压降作检验,低于其中一个门限为断路故障,
+  高于另一个门限为短路故障。因此它们的大小次序构成了对主机可写取值的一项约束 ——
+  短路门限应始终高于断路门限。二者交叉之后,它们之间那条健康带就变成两种故障同
+  时触发的带,于是交叉它们不是收紧了线圈检测,而是把它废掉了。</li>
+<li><code>CHG_OVP_TH</code> 与 <code>SHORT_COIL_RST_TH</code> 可读可写,但目前没有任何东西拿它们作比较
+  —— 一个是一路分压读数,其比较已被禁用,另一个所属的保护是靠别的手段检出的。保
+  留它们是为了编号的稳定性,今天写入它们不改变任何东西。</li>
+<li><code>LED_BREATH_PERIOD_MS</code> <strong>接受一个它并不存储的零</strong>:零会在显示斜坡中造成除零,
+  因此设置函数提前返回,而命令仍然应答 <code>[OK]</code>,随后的一次 <code>GET</code> 返回先前的值。这
+  是对 §8 回读规则的一处偏离,在此如实记录而不加掩饰。它接受的取值范围是一及以
+  上,新的实现应对那个零应答 <code>ERR_BAD_ARGS</code>,而不是照抄这一行为。</li>
+<li><code>LOG_ENABLE</code> <strong>存储的东西与收到的东西不同</strong>:它的设置函数把任何非零取值都压成
+  一,而命令一概应答 <code>[OK]</code>。因此对任何非零取值的 <code>SET</code> 都被应答 OK,而随后的一
+  次 <code>GET</code> 返回一。这正是 §8 所禁止的掩码处理,而且它与上一个槽位是同一个缺陷的
+  另一面 —— 一个无法把拒绝报告给组装响应那一层的设置函数,于是响应说 OK。它接受
+  的取值范围是零和一,新的实现应对其他任何取值应答 <code>ERR_BAD_ARGS</code>,而不是照抄这
+  一行为。这两处是同一个缺陷的两个实例,在这款产品自己的缺陷清单上作为一条而不
+  是两条互不相干的怪癖记录。</li>
+</ul>
+<p>除这两个之外,可写的参数槽位接受其槽位的全宽取值:固件对标识符作范围检查,而不
+是对取值。凡是某个取值必须合理设备才能正常动作的地方,那项约束属于产品,并且它
+在该产品自己的文档中。</p>
+<h3 id="a4">A.4 遥测字段</h3>
+<p>第一部分 §7.2 确定了哪一位对应哪个物理量,并把两件事留给产品:每个字段背后的标
+度,以及到底哪些位接到了真实读数上。在这款产品上每个字段都是 <code>u16</code>,标度为:</p>
+<ul>
+<li><code>LOG_FIELD_VDD</code>、<code>LOG_FIELD_VAT</code> —— 毫伏。</li>
+<li><code>LOG_FIELD_IAT</code> —— 毫安。</li>
+<li><code>LOG_FIELD_PWR</code> —— 毫瓦,由实测的负载电压、电流与驱动占空比推导而来,不是直接
+  测量的。</li>
+<li><code>LOG_FIELD_DUTY</code> —— 百分比。</li>
+<li><code>LOG_FIELD_RAT</code> —— 毫欧,由设备计算而来,不是测量的。</li>
+<li><code>LOG_FIELD_PROT</code> —— 设备保护状态的位域,不是一个带标度的量。</li>
+</ul>
+<p>接到真实读数上的有:<code>VDD</code>、<code>VAT</code>、<code>IAT</code>、<code>PWR</code>、<code>DUTY</code>,以及在带干烧支持的恒功
+率构建上的 <code>RAT</code>。<code>PROT</code> 没有接线,而 <code>RAT</code> 在恒压构建上读作零,因为那种构建没
+有可据以计算它的电流采样通道。未接线的位仍然会被接受,仍然在帧中占据它那个
+<code>u16</code>,报告为零,与 §7.2 的要求完全一致。</p>
+<h3 id="a5">A.5 调校标识符</h3>
+<p>第一部分 §6.4 确定了会话的形态,并把标识符留给产品。这一款定义了四个,而
+<code>CMD_TUNING_START</code> 对当前构建不支持的标识符以 <code>ERR_BAD_ARGS</code> 拒绝:</p>
+<ul>
+<li><code>TUNING_ID_CV_VATRMS</code>(0)—— 扫描恒压驱动目标。仅限恒压构建。</li>
+<li><code>TUNING_ID_BATTERY_GAUGE</code>(1)—— 扫描电量计的电压分档。它是在一个放电阶段和一
+  个充电阶段上定义的,而<strong>出货固件只运行充电阶段</strong>。一次会话走哪个阶段由设备决
+  定,依据是充电器是否真的在位;若不在位,该会话本会是一次放电扫描,而
+  <code>CMD_TUNING_START</code> 直接以 <code>ERR_NOT_READY</code> 拒绝该标识符。这次拒绝是刻意的:放
+  电扫描的那些帧会报告负载下的电压而不是电芯自身的电压,于是这次扫描会返回一批
+  看上去像标定结果、实则不是的数字,而拒绝才是诚实的答案。其成因是这款产品测量
+  通路上的一处回归,记录在它自己的缺陷清单上。这次拒绝不是下文那种预置拒绝 ——
+  它不取决于主机预置了什么 —— 二者只是共用同一个错误码。</li>
+<li><code>TUNING_ID_PROTECT_THRESH</code>(2)—— 扫描短路线圈与断路线圈的电阻门限。</li>
+<li><code>TUNING_ID_DRYPUFF</code>(3)—— 扫描干烧的温度门限与斜率门限。仅限带干烧支持的恒功
+  率构建。</li>
+</ul>
+<p>一次会话通过与 A.2 相同的外部控制输入通路运行真实的量产控制算法,因此主机在启动
+一次会话之前先预置激励;预置的做法随那个接口一同记载,在该产品自己的文档中。对
+于预置的激励不可能产出任何测量结果的会话,<code>CMD_TUNING_START</code> 以 <code>ERR_NOT_READY</code>
+拒绝,而不是跑完全程却什么也报不出来。</p>
+<p>有一个标识符还会约束所请求的报告周期。电量计会话按它自己固定的采样节奏每周期报
+告一次,因此周期已无可控制之处:<code>CMD_TUNING_START</code> 对其他任何取值以
+<code>ERR_BAD_ARGS</code> 拒绝,而不是接受下来再以另一个速率报告,因为请求了一个周期却悄悄
+得到另一个周期的主机,会把时间戳之间的每一个间隔都读错。该节奏本身是这款产品的
+一个常量,随该产品自己的文档一同给出。除 §6.4 所要求的之外,没有别的标识符再约
+束周期。</p>
+<p><strong>索引元组表示什么。</strong> §6.4 把 <code>CMD_SET_TUNING_PAR</code>/<code>CMD_GET_TUNING_PAR</code> 各索引
+的含义留给产品。在这里,<code>tuning_id</code> 选中标定表,其余索引寻址表中的一个单元;某
+个标识符只使用它自己那张表具备维度的那些索引,而它所使用的每一个索引都会针对真
+实维度作边界检查,越界按 §6.4 的要求应答 <code>ERR_BAD_ARGS</code>。这两个命令都不需要会
+话。</p>
+<ul>
+<li><code>TUNING_ID_CV_VATRMS</code> 是唯一用满整个元组的:<code>coil_idx</code> 为加热线圈,
+  <code>heating_mode</code> 为驱动模式,<code>heater_type</code> 为所装配的发热体,<code>step</code> 为目标电压的
+  档位。</li>
+<li><code>TUNING_ID_BATTERY_GAUGE</code> 把 <code>coil_idx</code> 用作<strong>充放电方向</strong> —— 放电或充电,不是
+  某根物理线圈 —— 并把 <code>step</code> 用作电量分档。</li>
+<li><code>TUNING_ID_PROTECT_THRESH</code> 把 <code>coil_idx</code> 用作加热线圈,把 <code>step</code> 用来选择这一
+  对门限中被寻址的是哪一个:短路线圈门限还是断路线圈门限。</li>
+<li><code>TUNING_ID_DRYPUFF</code> 把 <code>step</code> 用来选择绝对温度门限还是斜率门限;这些不是按线圈
+  划分的,但 <code>coil_idx</code> 仍会针对线圈数目作检查,因此点名了一根并不存在的线圈的主
+  机会被告知,而不是被照单服务。</li>
+</ul>
+<p>某个标识符不使用的索引会被忽略,并不要求它为零,也不作范围检查。主机宜为它发送
+零,因为日后赋予该维度含义的产品会开始检查它。</p>
+<p><strong>一次会话挂起哪些保护</strong> —— 这是 §6.4 所要求的披露:只要主机在驱动加热触发,长
+吸保护与加热超时保护就被挂起,这既涵盖单纯的外部控制,也涵盖调校会话;充电超时
+保护在电量计会话期间被挂起,因为跨电芯全量程充电正是那次测量本身;而线圈电阻检
+查在保护门限会话期间被挂起,那次扫描正是必须触及该检查存在的意义所在的那些取值
+的一次。欠压锁定与充电过压保护全程保持有效。曾指望长吸保护或加热超时保护来终止
+一次过长的、由外部驱动的加热请求的主机,不再拥有那道后备。</p>
+<p>那些挂起中有一处并不像它读起来那样触及得远。挂起线圈电阻检查,挂起的是设备在加
+热<em>期间</em>运行的那项检查,而不是它在加热<em>开始时</em>运行的那一项:后者直接依据一次引
+脚读数抬起断路线圈故障,其通路上没有任何东西是那次挂起触及得到的。因此,在一个
+该检查本会拒绝的负载上运行的保护门限会话,仍然可能在加热开始时被拦下 —— 而这恰
+恰是那次挂起存在所要允许的情形。它记录在这款产品自己的缺陷清单上,而披露了某项
+挂起的产品宜使该挂起触及该披露所涵盖的每一项检查。</p>
+<p>这款产品的协议表面上有一处不一致值得陈述,因为它是主机可见的:在恒压调校构建上,
+那两个干烧门限槽位经由 <code>CMD_PAR16_SET</code> 是可写的,该命令应答 <code>OK</code>;而
+<code>CMD_SET_TUNING_PAR</code> 拒绝它们,应答 <code>ERR_BAD_ARGS</code>,其理由是正确的 —— 在那种构
+建中没有任何东西读取它们。两个操作码,一个字段,相反的答案。这是对 §8.2 的一处
+偏离,而 §8.2 要求触及同一字段的两个操作码就它是否可写达成一致。它只是协议表面
+上的不一致 —— 无论如何那个字段都存在 —— 而且它是被记录下来,尚未解决。</p>
+<h2 id="b-cvs-bp2601">B. CVS-BP2601</h2>
+<p>同一标准之上的第二款产品。它的标识符映射表是它自己的,随那款产品一同保管;§8.1
+完整适用于它们,而附录 A 不可被读作在描述它们。</p>
+<p>与附录 A 之间在案的差异恰好只有一处,也正是 A.1 铺垫的那一处。
+<strong>CVS-BP2601 上的 <code>CMD_SET_MODE</code> 不触及日志使能参数。</strong> 在那里进入
+<code>OPMODE_DEBUG</code> 之后日志仍然是关闭的,直到一条明确的 <code>CMD_LOG_START</code> 为止;而
+CFS-ECIG-SUITE 则随模式把它强制关闭和打开。两种行为都符合本标准 —— §5 定义的是
+一种模式是为什么而设,并没有把某个参数槽位绑到它上面 —— 因此,想从任一款产品拿
+到日志输出的主机,应明确地提出要求,而不是从自己所选的模式去推断。
+CFS-ECIG-SUITE 的那一行为是该项目在 2026-07-10 作出的一个刻意选择,并且没有被回
+移。</p>
+<h2 id="c">C. 桥接层</h2>
+<p>桥接器就是 §1.3 中的那个中继,而 §9.2 已经从设备一侧陈述了规则:<code>0xC0</code> 及以上属
+于这一层,产品不得在那里定义命令,而桥接器仅依据操作码字节路由。本附录就是那条
+规则为之保留了该区段的那张表。</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody><tr><td>0xC0</td><td>CMD_B_PING</td></tr><tr><td>0xC1</td><td>CMD_B_INFO</td></tr><tr><td>0xC2</td><td>CMD_B_GET_CAPS</td></tr><tr><td>0xC3</td><td>CMD_B_GET_STATS</td></tr><tr><td>0xC4</td><td>CMD_B_GET_SNAPSHOT</td></tr><tr><td>0xC5</td><td>CMD_SET_SWD_SPEED</td></tr><tr><td>0xC6</td><td>CMD_SET_TARGET</td></tr><tr><td>0xC7</td><td>CMD_B_GET_VERSION</td></tr><tr><td>0xC8</td><td>CMD_MODE_DEBUG</td></tr><tr><td>0xC9</td><td>CMD_MODE_DOWNLOAD</td></tr><tr><td>0xCA</td><td>CMD_MODE_RAW</td></tr><tr><td>0xCB</td><td>CMD_MODE_BRIDGE_RESET</td></tr><tr><td>0xCC</td><td>CMD_TGT_NRST</td></tr><tr><td>0xCD</td><td>CMD_TGT_POWER</td></tr><tr><td>0xCE</td><td>CMD_BRIDGE_CONF</td></tr><tr><td>0xD0</td><td>CMD_SWD_CONNECT</td></tr><tr><td>0xD1</td><td>CMD_SWD_DISCONNECT</td></tr><tr><td>0xD2</td><td>CMD_SWD_LINE_RESET</td></tr><tr><td>0xD3</td><td>CMD_SWD_JTAG2SWD</td></tr><tr><td>0xD4</td><td>CMD_SWD_READ_IDCODE</td></tr><tr><td>0xD7</td><td>CMD_SWD_CONNECT_UNDER_RESET</td></tr><tr><td>0xD8</td><td>CMD_DP_READ</td></tr><tr><td>0xD9</td><td>CMD_DP_WRITE</td></tr><tr><td>0xDA</td><td>CMD_AP_READ</td></tr><tr><td>0xDB</td><td>CMD_AP_WRITE</td></tr><tr><td>0xE0</td><td>CMD_CORE_HALT</td></tr><tr><td>0xE1</td><td>CMD_CORE_RESUME</td></tr><tr><td>0xE2</td><td>CMD_CORE_STATUS</td></tr><tr><td>0xE3</td><td>CMD_CORE_SYSRESET</td></tr><tr><td>0xE4</td><td>CMD_CORE_RUN_DETACH</td></tr><tr><td>0xE8</td><td>CMD_UPD_BEGIN</td></tr><tr><td>0xE9</td><td>CMD_UPD_DATA</td></tr><tr><td>0xEA</td><td>CMD_UPD_END</td></tr><tr><td>0xEB</td><td>CMD_UPD_STATUS</td></tr><tr><td>0xEC</td><td>CMD_UPD_ABORT</td></tr><tr><td>0xED</td><td>CMD_UPD_APPLY</td></tr><tr><td>0xF0</td><td>CMD_FLASH_ERASE_4K</td></tr><tr><td>0xF1</td><td>CMD_FLASH_PROG_PAGE_128</td></tr><tr><td>0xF2</td><td>CMD_FLASH_PROG_PAGE_128_VERIFY</td></tr><tr><td>0xF3</td><td>CMD_FLASH_READ</td></tr><tr><td>0xF4</td><td>CMD_FLASH_MASS_ERASE</td></tr><tr><td>0xF5</td><td>CMD_FLASH_READ_EX</td></tr><tr><td>0xF8</td><td>CMD_OB_READ</td></tr><tr><td>0xF9</td><td>CMD_OB_WRITE</td></tr><tr><td>0xFA</td><td>CMD_OB_LAUNCH</td></tr><tr><td>0xFB</td><td>CMD_OB_WRITE_AND_LAUNCH</td></tr></tbody></table></div>
+
+<p>把它读作一层的表,而不是一块板子的表。目前有两块桥接板在役;它们的差别在性能,
+不在它们应答什么,而且两者都声明这张表。正是这一点使 §9.2 的保留成为一项保留,
+而不是某一块板子的约定俗成。</p>
+<p>主机在使用它之前应知道四件事:</p>
+<ul>
+<li><strong>有些条目是保留的、没有处理函数</strong>,而表中并不标出是哪些。某个操作码有没有处理
+  函数,是作出应答的那份映像的属性,不是该区段这张表的属性:它随固件版本而变,而
+  且引导加载程序应答的操作码远少于应用程序。保留的操作码像任何其他未实现的操作码
+  一样被应答 <code>ERR_BAD_ARGS</code>(§9.1),因此主机是去探测它,而不是先去读一个版本号。</li>
+<li><strong><code>CMD_UPD_*</code>(<code>0xE8</code>-<code>0xED</code>)更新的是桥接器自身,而且只有它的引导加载程序应答
+  它们。</strong> 它们不是 <code>CMD_FLASH_*</code> 区块,后者编程的是桥接器背后的那台<em>设备</em>。把两
+  者搞混是一个在协议层面无从防范的错误:两个区块都在这同一个区段里,而且两个都会
+  给出看似合理的应答。它们的形态是:<code>CMD_UPD_BEGIN</code> 接受一个固定 512 字节的映像头
+  并应答 <code>[OK][chunk_max u16][capacity u32]</code>;<code>CMD_UPD_DATA</code> 接受
+  <code>[off u32][data]</code>,数据字节最多 256 个且绝不超过刚刚返回的 <code>chunk_max</code>,应答
+  <code>[OK][next_off u32]</code>;<code>CMD_UPD_STATUS</code> 不带载荷,应答 <code>[OK]</code> 后跟一个固定 18 字
+  节的状态块,其字段布局是桥接器自己的,随它一同记载;而 <code>CMD_UPD_END</code>、
+  <code>CMD_UPD_ABORT</code> 和 <code>CMD_UPD_APPLY</code> 都不带载荷并应答 <code>[OK]</code>,板子在应答完
+  <code>CMD_UPD_APPLY</code> 之后再复制映像并复位自己。那些尺寸是这一区块的线路常量,在每一
+  块桥接板上都相同。</li>
+<li><strong><code>CMD_BRIDGE_CONF</code> 是一个操作码承载许多项设置</strong>,以一个参数字节作为键,因为这
+  个区段可用的编号不多,而一个开关不该占掉一个。未知的参数被应答 <code>ERR_BAD_ARGS</code>,
+  主机正是这样在不读版本号的情况下检出某项设置是否受支持。</li>
+<li><strong><code>CMD_B_PING</code> 和 <code>CMD_B_INFO</code> 之所以存在,是因为设备自己的 <code>CMD_PING</code> 和
+  <code>CMD_INFO</code> 说不出是谁作的应答。</strong> 两层对那两个命令的应答方式相同,因此想确认
+  <em>桥接器</em>在位的主机,要到桥接器自己的区段里去问。</li>
+</ul>
+<p>正如 §6.1 所提醒的,桥接器的版本命令带有它自己的选择子空间:同一个选择子编号在那
+里表示的东西不同于设备端。除固件版本之外,它还应答当前运行映像的<strong>角色</strong>,用以区
+分应用程序与引导加载程序 —— 这是主机最先该问的一件事,因为单凭一个固件版本说不出
+是哪份映像产出了它 —— 以及板子的<strong>硬件身份</strong>,这是唯一一个两份映像必须给出相同答
+案的选择子,因为映像变了硬件并不会变。</p>
+<p>角色选择子也是主机据以知道该对命令集选择子有何预期的地方。桥接器的引导加载程序对
+那个选择子应答它自己的编号,并刻意冻结在低于应用程序的位置:它命名的是最后一次改
+动了引导加载程序自身所实现的那少数几个操作码的修订版,并且它不随应用程序的编号推
+进。刚刚读到角色并发现对方是引导加载程序的主机,应当预期接下来读到的命令集版本会
+更低,并且不应把这一差异当作故障或构建有误的发布。§9.3 的发布记账规则针对的是同
+一份映像那个常量的各份副本,而引导加载程序是另一份映像。</p>
+<p>桥接器的错误码位于 §4.4 的扩展空间中,§4.4 点了它们各区块的名。有一种形态值得在此
+补充:每一个 <code>ERR_UPD_*</code> 码在码字节之后都携带一个 <code>u32</code> 细节,因为实机测试台上有
+用的问题不是一次更新是否失败,而是它失败在哪个偏移、哪个地址,或哪一项检查上。</p>
+<h2 id="d-dut">D. DUT 测试固件</h2>
+<p>存在三份小固件,以便桥接器总有一台符合本标准的设备可以对话,桥接器所面对的每一颗
+芯片各一份:<strong>CWM2032</strong>、<strong>CWM1016</strong> 和 <strong>CWM0508</strong>。它们是测试目标,不是产品,不
+随任何东西出货。</p>
+<p>每一份都恰好实现 §5.2 要求在 <code>OPMODE_NORMAL</code> 下被应答的那六个操作码 ——
+<code>CMD_PING</code>、<code>CMD_INFO</code>、<code>CMD_GET_VERSION</code>、<code>CMD_SET_MODE</code>、<code>CMD_DBG_ONLINE</code> 和
+<code>CMD_RESET</code> —— 别的一概不实现,而且每一份都声明与各款产品相同的命令集版本,理由就
+是 §9.3 给出的那条:版本命名的是操作码表,不是它背后那个实现的规模。实现六个操作
+码、其余按 §9.1 应答的设备,与实现全部操作码的设备同样符合本标准。</p>
+<h2 id="e">E. 命令集变更历史</h2>
+<p>一个版本号覆盖两个区段(§9.3)。它在下列每一处重复出现:</p>
+<ul>
+<li>CFS-ECIG-SUITE 固件,及其主机工具;</li>
+<li>两份桥接器固件各自一份、那两块板子的构建元数据文件各自一份,以及桥接器主机工具;</li>
+<li>附录 D 中三份测试固件各自一份。</li>
+</ul>
+<p>它们之中没有哪一份对其他各份具有权威性;各份互不一致的发布即为构建有误,这就是
+§9.3 所陈述的发布记账规则。这份清单本身就是那个事实,而且清单旁边不写总数:§9.3
+说过这些副本必须逐一数清而不能想当然,而写在清单旁边的一个总数是又一件需要维持为
+真的东西 —— 它正是会烂掉的那一件,而且下一次加板子的时候它还会再烂一次。去数这份
+清单。</p>
+<p>有两样东西携带同一个常量,并被刻意排除在清单之外。一棵冻结的参考代码树携带它,因
+为它是一份用于比对的快照,不是产品。桥接器的各引导加载程序携带它们自己的一个编号,
+冻结且更低,理由见附录 C。</p>
+<p>下面的每一条都是从那些副本的历史中推导出来的,而不是取自一份为此而维护的变更日志,
+而且每一条都点明了线路上有什么发生了变化。</p>
+<ul>
+<li><strong>2.0.0</strong>(2026-08-21)—— 这个号码本身。两层开始一同声明一个命令集版本。设备侧
+  新增了 <code>CMD_GET_VERSION</code>(<code>0x05</code>),桥接侧新增了 <code>CMD_B_GET_VERSION</code>(<code>0xC7</code>),
+  并且桥接器的两条配置命令被移到它的 SWD 门控之下,即它们本该在的位置,因为两者都
+  不驱动任何 SWD 引脚。</li>
+<li><strong>2.1.0</strong>(2026-08-26)—— <code>CMD_FLASH_READ</code>(<code>0xF3</code>)从保留变为已实现。</li>
+<li><strong>2.2.0</strong>(2026-08-26)—— 桥接器自更新区块 <code>CMD_UPD_*</code>(<code>0xE8</code>-<code>0xED</code>),仅引导
+  加载程序,连同它的 <code>ERR_UPD_*</code> 错误码;一个用于当前运行映像角色的版本选择子;以
+  及 <code>CMD_MODE_BRIDGE_RESET</code>(<code>0xCB</code>)从保留变为已实现。</li>
+<li><strong>2.3.0</strong>(2026-08-27)—— <code>CMD_BRIDGE_CONF</code>(<code>0xCE</code>),一个操作码以参数/取值对的
+  形式承载运行时设置,取代了每项设置一个操作码。</li>
+<li><strong>2.4.0</strong>(2026-08-30)—— 桥接器版本命令上的一个硬件身份选择子,从任一份映像都能
+  应答板子的身份与版次。在那之前,区分两块桥接板的唯一办法是自由文本。</li>
+<li><strong>2.5.0</strong>(2026-08-30)—— 内核暂停与内核恢复被给予它们自己的错误码,不再借用一个
+  闪存错误码,而那件事曾耗掉实机调试的时间(§4.4)。</li>
+<li><strong>2.6.0</strong>(2026-09-01)—— 桥接器的选项字节命令中点名了一个选项字节掩码位。</li>
+<li><strong>2.7.0</strong>(2026-09-03)—— 一个用于与复位线未接线的目标打交道的桥接器配置键。</li>
+<li><strong>2.8.0</strong>(2026-09-04)—— 一个用于选择 SWD 引脚交换的桥接器配置键。</li>
+<li><strong>2.9.0</strong>(2026-09-04)—— 引脚映射配置键,这是第一个其取值本身承载含义而不只是一
+  个标志位的配置键,与之同时的还有主机侧的修正:此前主机会把配置取值压成零或一,那
+  会把这个键的第二个取值当作它的第一个取值发出去。桥接器于是会选中第一个映射,并
+  把它实际收到的那个取值原样回送,于是回复与到达的那一帧彼此自洽,而线路上没有任何
+  东西显示主机要的其实是另一个映射。</li>
+<li><strong>2.10.0</strong>(2026-09-08)—— <code>CMD_FLASH_READ_EX</code>(<code>0xF5</code>),一次同时返回普通读取无
+  法报告的故障计数的读取。</li>
+<li><strong>2.11.0</strong>(2026-09-09)—— 当前版本。对 <code>CMD_TGT_POWER</code> 的写入被放到一个桥接器配
+  置键之后,使得有能力为其目标供电的板子不再默认这样做。</li>
+</ul>
+<p><strong>记录到哪里为止。</strong> 它到 2.0.0 以下就没有了,而且无从追回:命令集版本是 2026-08-21
+引入的,一引入就编号为 2.0.0,从来没有任何实现声明过 1.x。参考固件自己那份协议文档
+里出现的那些 <code>v1.x</code> 编号,是那份文档自己的修订号,它们不是命令集版本;把它们读作这
+份清单更早的条目会是一个错误。不过它们并非空无一物。那份文档在有线路可见的变更落地
+时才提升它的编号 —— 增删或重编一条命令、改变一种帧布局、改变一项默认行为 —— 而不为
+内部实现变更提升,而它的 <code>v1.0</code> 到 <code>v1.5</code> 各条记录的都是真实的线路变更:一个日志操
+作码挪了位置、突发载荷被重排、一种工作模式被废止、默认模式对未知命令的应答从一个错
+误变成了沉默,以及一条调校命令的载荷长出了一个前导字段。它们描述的是一款产品上的线
+路变更,而且完全早于命令集编号本身。</p>
+<p>这份清单有两条属性值得直白地陈述。自 2.0.0 以来的每一次提升都是 MINOR,而且其中每
+一次都落在桥接区段里:设备区段自 2.0.0 以来没有变过,这就是为什么一台针对 2.0.0 构
+建的设备与一台针对 2.11.0 构建的主机,在这台设备所拥有的每一个操作码上仍然一致。这
+是关于已编号那一段的陈述,而不是关于更早时期的 —— 在编号开始之前的那几周里,设备区
+段曾被反复重新编号,上面那些 <code>v1.x</code> 条目正记录了这一点,而这也是编号之所以存在的原
+因之一。并且并非每一次提升都是线路变更 —— 2.9.0 有一部分是主机侧的记账 —— 因为 §9.3
+的规则是上面那份清单中的每一份副本一同变更,而不是每一次递增都增加一个操作码。</p></main>
+</body>
+</html>

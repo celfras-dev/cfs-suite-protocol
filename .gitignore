@@ -7,6 +7,8 @@ __pycache__/
 # threshold values that the public document deliberately omits.
 out/internal/
 
-site/
+# site/ IS committed: this repository is currently the only distribution
+# channel, so the rendered pages ship with it and GitHub Pages can serve
+# them with one setting. Regenerate with `python -m tools.build`.
 
 .superpowers/

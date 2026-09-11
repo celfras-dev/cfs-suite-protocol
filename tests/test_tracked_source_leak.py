@@ -37,15 +37,22 @@ def test_no_forbidden_value_in_any_tracked_file():
     is exactly the kind of fact that goes stale).
 
     Matching uses the same digit-boundary rule test_public_leak.py uses
-    (`(?<![0-9.])N(?![0-9.])`), so "1000" cannot match inside "10000", plus
-    one addition: a match immediately preceded by "0x"/"0X" is skipped. A
-    hex literal's digits are not a product threshold -- a CRC bit mask
-    like `0x8000` would otherwise false-positive against a decimal gate
-    value of 8000 -- and this repo's own CRC worked examples in spec/*.md
-    (0x0DE7, 0x861A, 0x29B1) are exactly that shape, even though none of
-    them currently collides with a gate value. Deliberately narrow (a hex
-    prefix check, not a file-level exclusion list): excluding whole files
-    by name would recreate the same blind spot this test exists to close.
+    (`(?<![0-9.])N(?![0-9.])`), so a shorter gate value cannot match inside
+    a longer number that merely contains its digits, plus one addition: a
+    match immediately preceded by "0x"/"0X" is skipped. A hex literal's
+    digits are not a product threshold -- a CRC bit mask can share digits
+    with a decimal gate value while meaning something entirely unrelated --
+    and this repo's own CRC worked examples in spec/*.md (0x0DE7, 0x861A,
+    0x29B1) are exactly that shape, even though none of them currently
+    collides. Deliberately narrow (a hex prefix check, not a file-level
+    exclusion list): excluding whole files by name would recreate the same
+    blind spot this test exists to close.
+
+    Note this docstring names no gate value as a bare decimal, on purpose.
+    This file is tracked, so the scanner reads it too -- an illustrative
+    number here would flag itself. Its sibling below solves the same
+    problem by assembling its marker from parts. A detector that has to be
+    exempted from its own rule is a detector with a hole in it.
 
     Binary or non-UTF-8 files are skipped rather than crashing the test --
     they cannot carry a text leak, and this repo does not need to inspect

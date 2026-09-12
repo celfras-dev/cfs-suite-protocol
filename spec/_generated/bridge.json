@@ -13,7 +13,7 @@
     {
       "id": 194,
       "name": "CMD_B_GET_CAPS",
-      "note": "reserved in fw v2.0.0, no handler yet"
+      "note": "req []  resp [OK][caps u32 LE][reserved u32 LE]; bits BCAP_* (3.0.0)"
     },
     {
       "id": 195,

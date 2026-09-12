@@ -73,7 +73,7 @@ def test_language_font_stack_is_applied(gen):
 
 def test_version_reaches_the_page(gen):
     html = render.render_page("en", "# T", gen, for_print=True)
-    assert "2.11.0" in html
+    assert "3.0.0" in html
 
 
 def test_ver_selectors_table(gen):

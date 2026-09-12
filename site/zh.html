@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V2.11.0</title>
+<title>Celfras Standard Protocol V3.0.0</title>
 <style>
 :root { --font-body: "Microsoft YaHei", "Noto Sans SC", sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1615,6 +1615,49 @@ CFS-ECIG-SUITE 的那一行为是该项目在 2026-07-10 作出的一个刻意�
 <p>桥接器的错误码位于 §4.4 的扩展空间中,§4.4 点了它们各区块的名。有一种形态值得在此
 补充:每一个 <code>ERR_UPD_*</code> 码在码字节之后都携带一个 <code>u32</code> 细节,因为实机测试台上有
 用的问题不是一次更新是否失败,而是它失败在哪个偏移、哪个地址,或哪一项检查上。</p>
+<h3 id="c1-cmsis-dap">C.1 CMSIS-DAP 人格</h3>
+<p>桥接器收到目标值为 <code>0x02</code>(<code>BRIDGE_RESET_TO_DAP</code>)的 <code>CMD_MODE_BRIDGE_RESET</code> 后,
+先应答,再复位,然后重新枚举为 CMSIS-DAP v1 调试单元:仅 USB HID,VID <code>0x0A05</code>,
+PID <code>0x050B</code>,一个 64 字节 IN 报告和一个 64 字节 OUT 报告,产品字符串中含有
+<code>CMSIS-DAP</code>,iSerialNumber 与 CDC 人格相同。CMSIS-DAP 命令本身是 ARM 的
+(CMSIS-DAP 2.1.1 命令集,仅 SWD,<code>0x00-0x13</code>);本标准不再复述它们。</p>
+<p>供应商命令 <code>0x80</code>(<code>DAP_Vendor0</code>)是 <em>CFS 隧道</em>:请求报告
+<code>[0x80][n][n 字节]</code>(n ≤ 62)携带 CDC 人格所讲的同一个 COBS 字节流的接下来 n
+个字节,而应答报告 <code>[0x80][m][m 字节]</code> 返回应答流的接下来 m 个字节。n = 0
+表示轮询更多应答字节。分帧、CRC 与操作码均不变。在此人格下,桥接器只应答
+<code>CMD_B_PING</code>、<code>CMD_B_INFO</code>、<code>CMD_B_GET_CAPS</code>、<code>CMD_B_GET_VERSION</code>、
+<code>CMD_B_GET_STATS</code>、<code>CMD_B_GET_SNAPSHOT</code>,以及 <code>CMD_MODE_BRIDGE_RESET</code>(所有目标
+值);其余一切操作码,以及所有 DUT 操作码,均应答 <code>ERR_NOT_READY</code>。</p>
+<p>这个人格保存在 RAM 中:断电重启总会让桥接器回到 CDC 人格,板上的 KEY 按钮也一样。</p>
+<h3 id="c2-cmd_b_get_caps">C.2 桥接器能力位(<code>CMD_B_GET_CAPS</code>)</h3>
+<p>自 2.0.0 起一直只是保留的 <code>CMD_B_GET_CAPS</code>(<code>0xC2</code>),从桥接命令集 3.0.0 起实现。
+请求不带载荷;应答为 <code>[OK][caps u32 LE][reserved u32 LE]</code>。第二个字为 0,主机忽略
+它。该命令不触碰任何引脚,因此在任一模式、任一人格下都会应答,主机可以在其他一切
+之前先发送它。</p>
+<p><code>caps</code> 说的是<em>应答的固件</em>能做什么,而 <code>CMD_B_GET_VERSION(VER_HW)</code> 说的是它跑在哪块
+板上。主机按这些位分支,而不是按自己维护的一张按板列出的表。各位永不重新分配;
+第 8-31 位未分配,读为 0。</p>
+<ul>
+<li><code>BCAP_TGT_NRST</code>(<code>0x00000001</code>)—— <code>CMD_TGT_NRST</code> 驱动一条真实的 nRESET 线。</li>
+<li><code>BCAP_TGT_POWER_OEN</code>(<code>0x00000002</code>)—— <code>CMD_TGT_POWER</code> 存在:桥接器能开关 DUT
+  的供电(BRD02 上该引脚本身就是电源轨,写入受 <code>BCONF_TGT_POWER_EN</code> 门控;BRD01
+  上由一只旁路晶体管门控 USB VBUS)。</li>
+<li><code>BCAP_PIN_MAP</code>(<code>0x00000004</code>)—— <code>BCONF_PIN_MAP</code> 可在运行时选择引脚映射。</li>
+<li><code>BCAP_FLASH_READ_EX</code>(<code>0x00000008</code>)—— 已实现 <code>CMD_FLASH_READ_EX</code>。</li>
+<li><code>BCAP_DAP_PERSONA</code>(<code>0x00000010</code>)—— <code>BRIDGE_RESET_TO_DAP</code> 会把桥接器重启为
+  C.1 的 CMSIS-DAP HID 人格。</li>
+<li><code>BCAP_BTN_HW_RESET</code>(<code>0x00000020</code>)—— 板上有硬件复位按钮(KEY)。</li>
+<li><code>BCAP_TGT_POWER_5V</code>(<code>0x00000040</code>)—— 被开关的 DUT 供电为 5.0 V;为 0 则是
+  3.3 V IO 电源轨。</li>
+<li><code>BCAP_GPIO_CTRL</code>(<code>0x00000080</code>)—— 为桥接器 GPIO 控制命令保留。目前尚无此命令,
+  所以每块板都应答 0。</li>
+</ul>
+<p>按构建结果,BRD02 应答 <code>0x3F</code>(除 5 V 电源轨外全部具备:它开关的是 3.3 V IO 轨),
+BRD01 应答 <code>0x4B</code>(nRESET、可开关供电、<code>CMD_FLASH_READ_EX</code> 与 5 V 轨;没有运行时
+引脚映射、没有 DAP 人格、没有 KEY)。</p>
+<p>低于 3.0.0 的应用对未知操作码应答 <code>ERR_BAD_ARGS</code>,桥接器引导加载程序对未实现的
+操作码应答其默认的 <code>ERR_NOT_READY</code>。主机把<strong>任何</strong>错误应答都当作 <code>caps = 0</code>:桥接器说不出来,于是不假定任何
+可选功能存在。</p>
 <h2 id="d-dut">D. DUT 测试固件</h2>
 <p>存在三份小固件,以便桥接器总有一台符合本标准的设备可以对话,桥接器所面对的每一颗
 芯片各一份:<strong>CWM2032</strong>、<strong>CWM1016</strong> 和 <strong>CWM0508</strong>。它们是测试目标,不是产品,不
@@ -1649,7 +1692,9 @@ CFS-ECIG-SUITE 的那一行为是该项目在 2026-07-10 作出的一个刻意�
 <li><strong>2.1.0</strong>(2026-08-26)—— <code>CMD_FLASH_READ</code>(<code>0xF3</code>)从保留变为已实现。</li>
 <li><strong>2.2.0</strong>(2026-08-26)—— 桥接器自更新区块 <code>CMD_UPD_*</code>(<code>0xE8</code>-<code>0xED</code>),仅引导
   加载程序,连同它的 <code>ERR_UPD_*</code> 错误码;一个用于当前运行映像角色的版本选择子;以
-  及 <code>CMD_MODE_BRIDGE_RESET</code>(<code>0xCB</code>)从保留变为已实现。</li>
+  及 <code>CMD_MODE_BRIDGE_RESET</code>(<code>0xCB</code>)从保留变为已实现。目标值:<code>0x00</code> 应用、
+  <code>0x01</code> 引导加载程序、<code>0x02</code> CMSIS-DAP 人格(3.0.0,见 C.1;没有该人格的桥接器
+  应答 <code>ERR_BAD_ARGS</code>)。</li>
 <li><strong>2.3.0</strong>(2026-08-27)—— <code>CMD_BRIDGE_CONF</code>(<code>0xCE</code>),一个操作码以参数/取值对的
   形式承载运行时设置,取代了每项设置一个操作码。</li>
 <li><strong>2.4.0</strong>(2026-08-30)—— 桥接器版本命令上的一个硬件身份选择子,从任一份映像都能
@@ -1666,8 +1711,13 @@ CFS-ECIG-SUITE 的那一行为是该项目在 2026-07-10 作出的一个刻意�
   东西显示主机要的其实是另一个映射。</li>
 <li><strong>2.10.0</strong>(2026-09-08)—— <code>CMD_FLASH_READ_EX</code>(<code>0xF5</code>),一次同时返回普通读取无
   法报告的故障计数的读取。</li>
-<li><strong>2.11.0</strong>(2026-09-09)—— 当前版本。对 <code>CMD_TGT_POWER</code> 的写入被放到一个桥接器配
-  置键之后,使得有能力为其目标供电的板子不再默认这样做。</li>
+<li><strong>2.11.0</strong>(2026-09-09)—— 对 <code>CMD_TGT_POWER</code> 的写入被放到一个桥接器配置键之后,
+  使得有能力为其目标供电的板子不再默认这样做。</li>
+<li><strong>3.0.0</strong>(2026-09-11)—— 当前版本。<code>CMD_MODE_BRIDGE_RESET</code> 获得了第三个目标值
+  <code>BRIDGE_RESET_TO_DAP</code>(<code>0x02</code>):桥接板不再重启为惯常的 CDC 人格,而是重启为
+  CMSIS-DAP v1 HID 调试单元。见 C.1。同时 <code>CMD_B_GET_CAPS</code>(<code>0xC2</code>)由保留变为已
+  实现:一个能力字(<code>BCAP_*</code>),说明应答的固件能做什么,主机从此不必再维护按板列出
+  的表。见 C.2。</li>
 </ul>
 <p><strong>记录到哪里为止。</strong> 它到 2.0.0 以下就没有了,而且无从追回:命令集版本是 2026-08-21
 引入的,一引入就编号为 2.0.0,从来没有任何实现声明过 1.x。参考固件自己那份协议文档

@@ -14,8 +14,10 @@ def test_every_entry_is_in_the_reserved_band():
 
 
 def test_reserved_but_unimplemented_is_marked():
-    caps = next(c for c in bridge.extract() if c["id"] == 0xC2)
-    assert "reserved" in caps["note"].lower()
+    # 0xC2 (CMD_B_GET_CAPS) was the example until 3.0.0 implemented it;
+    # CMD_MODE_RAW (0xCA) is still reserved with no handler.
+    raw = next(c for c in bridge.extract() if c["id"] == 0xCA)
+    assert "reserved" in raw["note"].lower()
 
 
 def test_comment_does_not_cross_line_into_next_entry():
@@ -55,7 +57,7 @@ def test_comment_does_not_cross_line_into_next_entry():
     # otherwise a parser that just drops every note would pass the above
     # for the wrong reason.
     for cmd_id, name, snippet in (
-        (0xC2, "CMD_B_GET_CAPS", "reserved"),
+        (0xC2, "CMD_B_GET_CAPS", "caps u32"),
         (0xCC, "CMD_TGT_NRST", "assert u8"),
         (0xF4, "CMD_FLASH_MASS_ERASE", "reserved"),
         (0xF5, "CMD_FLASH_READ_EX", "addr u32"),

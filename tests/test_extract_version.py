@@ -5,7 +5,7 @@ from tools.extract import sources, version
 
 
 def test_extract_returns_current_cmd_set_version():
-    assert version.extract() == (2, 11, 0)
+    assert version.extract() == (3, 0, 0)
 
 
 def test_collect_sees_every_known_copy():
@@ -150,8 +150,6 @@ def test_no_undeclared_copy_appeared():
             # A frozen reference snapshot, not a product -- requiring it to
             # agree would break the build the moment a real copy is bumped
             # and the reference is correctly left alone.
-            "CFS-SUITE-BRIDGE/fw_dut/ref_cwm2032_working_uart_swd_together/"
-            "Project/Inc/app_proto_defs.h",
             # The bridge bootloaders' OWN number (BOOT_CMD_SET_VERSION_*),
             # frozen at the last shared revision they implement and
             # deliberately NOT the same value as CMD_SET_VERSION -- see the
@@ -181,7 +179,9 @@ def test_no_undeclared_copy_appeared():
             # branch actually matched.
             "CFS-SUITE-BRIDGE/pc_app/tests/test_commands_match_firmware.py",
             "CFS-SUITE-BRIDGE/pc_app/tests/test_dut_cmd_set.py",
-            "CFS-SUITE-BRIDGE/pc_app/tests/test_ref_dut_proto.py",
+            # tools/protocol_check.py READS the published standard and this
+            # repository's copies to say whether they agree; it declares nothing.
+            "CFS-SUITE-BRIDGE/pc_app/tools/protocol_check.py",
             # Planning/spec prose that quotes a real declaration line or a
             # field signature, written up for a reader rather than read by
             # any tool.
@@ -195,6 +195,8 @@ def test_no_undeclared_copy_appeared():
             "2026-09-04-brd02-runtime-pinmap.md",
             "CFS-SUITE-BRIDGE/docs/superpowers/plans/"
             "2026-09-08-brd03-dut-vdd.md",
+            "CFS-SUITE-BRIDGE/docs/superpowers/plans/"
+            "2026-09-11-brd02-cmsis-dap-persona.md",
             "CFS-SUITE-BRIDGE/docs/superpowers/specs/"
             "2026-09-01-bridge-suite-unification-design.md",
             "CFS-SUITE-BRIDGE/pc_app/docs/superpowers/plans/"

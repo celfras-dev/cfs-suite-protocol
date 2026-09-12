@@ -1535,6 +1535,68 @@ blocks. One shape is worth adding here: every `ERR_UPD_*` code carries a `u32`
 detail after the code byte, because the useful question on a bench is not
 whether an update failed but at which offset, which address, or which check.
 
+### C.1 CMSIS-DAP persona
+
+A bridge that receives `CMD_MODE_BRIDGE_RESET` with target `0x02`
+(`BRIDGE_RESET_TO_DAP`) acknowledges, resets, and re-enumerates as a
+CMSIS-DAP v1 debug unit: USB HID only, VID `0x0A05`, PID `0x050B`, one
+64-byte IN and one 64-byte OUT report, product string containing
+`CMSIS-DAP`, the same iSerialNumber as the CDC persona. The CMSIS-DAP
+commands themselves are ARM's (CMSIS-DAP 2.1.1 command set, SWD only,
+`0x00-0x13`); this standard does not restate them.
+
+Vendor command `0x80` (`DAP_Vendor0`) is the *CFS tunnel*: a request report
+`[0x80][n][n bytes]` (n ≤ 62) carries the next n bytes of the same COBS
+byte stream the CDC persona speaks, and the response report
+`[0x80][m][m bytes]` returns the next m bytes of the reply stream. n = 0
+polls for more reply bytes. Framing, CRC and opcodes are unchanged. In this
+persona the bridge answers only `CMD_B_PING`, `CMD_B_INFO`,
+`CMD_B_GET_CAPS`, `CMD_B_GET_VERSION`, `CMD_B_GET_STATS`, `CMD_B_GET_SNAPSHOT`
+and `CMD_MODE_BRIDGE_RESET` (all targets); every other opcode, and every DUT
+opcode, answers `ERR_NOT_READY`.
+
+The persona is held in RAM: a power cycle always returns the bridge to the
+CDC persona, as does the board's KEY button.
+
+### C.2 Bridge capabilities (`CMD_B_GET_CAPS`)
+
+`CMD_B_GET_CAPS` (`0xC2`), reserved since 2.0.0, is implemented from bridge
+command set 3.0.0. The request carries no payload; the reply is
+`[OK][caps u32 LE][reserved u32 LE]`. The second word is zero and a host
+ignores it. The command touches no pin, so it is answered in either mode and
+in both personas, and a host may send it before anything else.
+
+`caps` says what the *firmware answering* can do, as opposed to
+`CMD_B_GET_VERSION(VER_HW)`, which says which board it runs on. A host branches
+on these bits and not on a per-board table of its own. Bits are never
+reassigned; bits 8-31 are unassigned and read as 0.
+
+- `BCAP_TGT_NRST` (`0x00000001`) — `CMD_TGT_NRST` drives a real nRESET line.
+- `BCAP_TGT_POWER_OEN` (`0x00000002`) — `CMD_TGT_POWER` exists: the bridge can
+  switch the DUT supply on and off (on BRD02 the rail is the pin itself and a
+  write is gated by `BCONF_TGT_POWER_EN`; on BRD01 a pass transistor gates
+  USB VBUS).
+- `BCAP_PIN_MAP` (`0x00000004`) — `BCONF_PIN_MAP` selects a run-time pin map.
+- `BCAP_FLASH_READ_EX` (`0x00000008`) — `CMD_FLASH_READ_EX` is implemented.
+- `BCAP_DAP_PERSONA` (`0x00000010`) — `BRIDGE_RESET_TO_DAP` reboots the
+  bridge as the CMSIS-DAP HID persona of C.1.
+- `BCAP_BTN_HW_RESET` (`0x00000020`) — the board has a hardware reset button
+  (KEY).
+- `BCAP_TGT_POWER_5V` (`0x00000040`) — the switched DUT supply is 5.0 V; clear
+  means a 3.3 V IO rail.
+- `BCAP_GPIO_CTRL` (`0x00000080`) — reserved for a bridge GPIO control command.
+  No such command exists yet, so every board answers 0 here.
+
+As built, BRD02 answers `0x3F` (everything but the 5 V rail: its switched
+rail is 3.3 V IO) and BRD01 answers `0x4B` (nRESET, switchable power,
+`CMD_FLASH_READ_EX`, and a 5 V rail; no run-time pin map, no DAP persona, no
+KEY).
+
+An app below 3.0.0 answers `ERR_BAD_ARGS` (unknown opcode) and a bridge
+bootloader answers `ERR_NOT_READY` (its catch-all for opcodes it does not
+implement). A host treats **any** error reply as `caps = 0`: the bridge
+cannot say, so no optional feature is assumed.
+
 ## D. DUT test firmwares
 
 Three small firmwares exist so that a bridge always has a conforming device to
@@ -1584,7 +1646,9 @@ changelog kept for the purpose, and each names what changed on the wire.
 - **2.2.0** (2026-08-26) — the bridge self-update block `CMD_UPD_*`
   (`0xE8`-`0xED`), bootloader-only, with its `ERR_UPD_*` error codes; a version
   selector for the running image's role; and `CMD_MODE_BRIDGE_RESET` (`0xCB`)
-  from reserved to implemented.
+  from reserved to implemented. Targets: `0x00` app, `0x01` bootloader, `0x02`
+  CMSIS-DAP persona (3.0.0, see C.1; a bridge without the persona answers
+  `ERR_BAD_ARGS`).
 - **2.3.0** (2026-08-27) — `CMD_BRIDGE_CONF` (`0xCE`), one opcode carrying
   runtime settings as a parameter/value pair instead of an opcode per setting.
 - **2.4.0** (2026-08-30) — a hardware-identity selector on the bridge's version
@@ -1607,9 +1671,15 @@ changelog kept for the purpose, and each names what changed on the wire.
   that the host had asked for the other map.
 - **2.10.0** (2026-09-08) — `CMD_FLASH_READ_EX` (`0xF5`), a read that also
   returns the fault count the plain read cannot report.
-- **2.11.0** (2026-09-09) — current. Writes to `CMD_TGT_POWER` were placed
-  behind a bridge configuration key, so a board able to supply its target's
-  power does not do so by default.
+- **2.11.0** (2026-09-09) — Writes to `CMD_TGT_POWER` were placed behind a
+  bridge configuration key, so a board able to supply its target's power does
+  not do so by default.
+- **3.0.0** (2026-09-11) — current. `CMD_MODE_BRIDGE_RESET` gained a third
+  target, `BRIDGE_RESET_TO_DAP` (`0x02`): a bridge board reboots as a
+  CMSIS-DAP v1 HID debug unit instead of its usual CDC persona. See C.1. And
+  `CMD_B_GET_CAPS` (`0xC2`) went from reserved to implemented: a capability
+  word (`BCAP_*`) saying what the answering firmware can do, so a host no
+  longer keeps a per-board table. See C.2.
 
 **Where the record runs out.** It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered

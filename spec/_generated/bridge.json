@@ -182,18 +182,18 @@
     },
     {
       "id": 240,
-      "name": "CMD_FLASH_ERASE_4K",
-      "note": ""
+      "name": "CMD_FLASH_ERASE_SECTOR",
+      "note": "req [addr u32]  resp [OK] -- erases the sector containing addr"
     },
     {
       "id": 241,
-      "name": "CMD_FLASH_PROG_PAGE_128",
-      "note": ""
+      "name": "CMD_FLASH_PROG_PAGE",
+      "note": "req [addr u32][page_size B]  resp [OK]"
     },
     {
       "id": 242,
-      "name": "CMD_FLASH_PROG_PAGE_128_VERIFY",
-      "note": ""
+      "name": "CMD_FLASH_PROG_PAGE_VERIFY",
+      "note": "req [addr u32][page_size B]  resp OK:[] ERR:[err_code][mismatch_off u8]"
     },
     {
       "id": 243,

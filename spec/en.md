@@ -1597,11 +1597,42 @@ bootloader answers `ERR_NOT_READY` (its catch-all for opcodes it does not
 implement). A host treats **any** error reply as `caps = 0`: the bridge
 cannot say, so no optional feature is assumed.
 
+### C.3 The flash units are the target's (`CMD_SET_TARGET`)
+
+The bridge programs and erases the device behind it in that device's own
+units, and those units differ between families: the `CWM0508`, `CWM0524`,
+`CWM1016` and `CWM2032` families program 128-byte pages and erase 4 KB
+sectors; the `CWM30C8` family (model `0x04`, command set 3.1.0) programs
+256-byte pages and erases 8 KB sectors. The three opcodes of the flash block
+therefore carry no size of their own:
+
+- `CMD_FLASH_ERASE_SECTOR` (`0xF0`) takes `[addr u32]` and erases the sector
+  that contains `addr`, aligned down by the bridge;
+- `CMD_FLASH_PROG_PAGE` (`0xF1`) and `CMD_FLASH_PROG_PAGE_VERIFY` (`0xF2`)
+  take `[addr u32]` followed by exactly one page of the selected target. A
+  frame carrying any other number of bytes MUST be answered `ERR_BAD_ARGS`.
+  The verify form's error reply is `[err_code][mismatch_off u8]`, the offset
+  of the first differing byte within the page.
+
+A host learns the units from the bridge rather than from a table of its own:
+from 3.1.0 the `CMD_SET_TARGET` reply carries `[page_size u16 LE]
+[sector_size u16 LE]` at offset 20, after the flash base and size it already
+answered. A bridge below 3.1.0 answers 20 bytes and knows no family whose
+units are not 128 B / 4 KB, so a host that stops reading at 20 loses nothing
+on it -- and a host that selects a model the bridge does not know is
+answered `ERR_BAD_ARGS` before any page is sent, which is what keeps a
+256-byte page from ever reaching a bridge that programs 128.
+
+Before 3.1.0 these three opcodes were named `CMD_FLASH_ERASE_4K`,
+`CMD_FLASH_PROG_PAGE_128` and `CMD_FLASH_PROG_PAGE_128_VERIFY`. The numbers
+did not move; the names stopped claiming a size.
+
 ## D. DUT test firmwares
 
-Three small firmwares exist so that a bridge always has a conforming device to
-talk to, one for each chip a bridge is used against: **CWM2032**, **CWM1016**
-and **CWM0508**. They are test targets, not products, and ship in nothing.
+Four small firmwares exist so that a bridge always has a conforming device to
+talk to, one for each chip a bridge is used against: **CWM2032**, **CWM1016**,
+**CWM0508** and **CWM30C8**. They are test targets, not products, and ship in
+nothing.
 
 Each implements exactly the six opcodes §5.2 requires to be answered in
 `OPMODE_NORMAL` — `CMD_PING`, `CMD_INFO`, `CMD_GET_VERSION`, `CMD_SET_MODE`,
@@ -1619,7 +1650,7 @@ place in this list:
 - the CFS-ECIG-SUITE firmware, and its host tool;
 - each of the two bridge firmwares, each of those two boards' build-metadata
   files, and the bridge host tool;
-- each of the three test firmwares of Appendix D.
+- each of the four test firmwares of Appendix D.
 
 None of them is authoritative over the others; a release in which they disagree
 is mis-built, which is the release-bookkeeping rule §9.3 states. The list is the
@@ -1674,12 +1705,19 @@ changelog kept for the purpose, and each names what changed on the wire.
 - **2.11.0** (2026-09-09) — Writes to `CMD_TGT_POWER` were placed behind a
   bridge configuration key, so a board able to supply its target's power does
   not do so by default.
-- **3.0.0** (2026-09-11) — current. `CMD_MODE_BRIDGE_RESET` gained a third
+- **3.0.0** (2026-09-11) — `CMD_MODE_BRIDGE_RESET` gained a third
   target, `BRIDGE_RESET_TO_DAP` (`0x02`): a bridge board reboots as a
   CMSIS-DAP v1 HID debug unit instead of its usual CDC persona. See C.1. And
   `CMD_B_GET_CAPS` (`0xC2`) went from reserved to implemented: a capability
   word (`BCAP_*`) saying what the answering firmware can do, so a host no
   longer keeps a per-board table. See C.2.
+- **3.1.0** (2026-09-13) — current. `CMD_SET_TARGET` accepts a fifth model,
+  `CWM30C8` (`0x04`), and its reply carries the target's program page and
+  erase sector, because that family programs 256-byte pages and erases 8 KB
+  sectors where every earlier one did 128 B / 4 KB. The flash block's three
+  opcodes (`0xF0`-`0xF2`) keep their numbers and are renamed to say what
+  they do -- the unit is the selected target's, not the opcode's. See C.3.
+  A fourth test firmware joins Appendix D.
 
 **Where the record runs out.** It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered

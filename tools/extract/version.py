@@ -57,6 +57,7 @@ _C_HEADERS = [
     ("CFS-SUITE-BRIDGE", "fw_dut/cwm2032/App/Inc/app_proto.h"),
     ("CFS-SUITE-BRIDGE", "fw_dut/cwm1016/App/Inc/app_proto.h"),
     ("CFS-SUITE-BRIDGE", "fw_dut/cwm0508/App/Inc/app_proto.h"),
+    ("CFS-SUITE-BRIDGE", "fw_dut/cwm30c8/App/Inc/app_proto.h"),
 ]
 _ECIG_JSON = ("CFS-ECIG-SUITE/pc_app", "conf/cmd_set.json")
 _BRIDGE_PY = ("CFS-SUITE-BRIDGE", "pc_app/cfsbridge/commands.py")

@@ -5,7 +5,7 @@ from tools.extract import sources, version
 
 
 def test_extract_returns_current_cmd_set_version():
-    assert version.extract() == (3, 0, 0)
+    assert version.extract() == (3, 1, 0)
 
 
 def test_collect_sees_every_known_copy():
@@ -18,6 +18,7 @@ def test_collect_sees_every_known_copy():
         "CFS-SUITE-BRIDGE/fw_dut/cwm2032/App/Inc/app_proto.h",
         "CFS-SUITE-BRIDGE/fw_dut/cwm1016/App/Inc/app_proto.h",
         "CFS-SUITE-BRIDGE/fw_dut/cwm0508/App/Inc/app_proto.h",
+        "CFS-SUITE-BRIDGE/fw_dut/cwm30c8/App/Inc/app_proto.h",
         "CFS-ECIG-SUITE/pc_app/conf/cmd_set.json",
         "CFS-SUITE-BRIDGE/pc_app/cfsbridge/commands.py",
         "CFS-SUITE-BRIDGE/fw/brd01/board.txt",
@@ -197,6 +198,12 @@ def test_no_undeclared_copy_appeared():
             "2026-09-08-brd03-dut-vdd.md",
             "CFS-SUITE-BRIDGE/docs/superpowers/plans/"
             "2026-09-11-brd02-cmsis-dap-persona.md",
+            # The (since deleted) ref_cwm2032 alignment plan and spec, tracked
+            # in the bridge repo since its docs/ re-include fix; prose only.
+            "CFS-SUITE-BRIDGE/docs/superpowers/plans/"
+            "2026-09-08-ref-cwm2032-proto-alignment.md",
+            "CFS-SUITE-BRIDGE/docs/superpowers/specs/"
+            "2026-09-07-ref-cwm2032-proto-alignment-design.md",
             "CFS-SUITE-BRIDGE/docs/superpowers/specs/"
             "2026-09-01-bridge-suite-unification-design.md",
             "CFS-SUITE-BRIDGE/pc_app/docs/superpowers/plans/"

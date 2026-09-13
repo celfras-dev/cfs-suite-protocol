@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V3.0.0</title>
+<title>Celfras Standard Protocol V3.1.0</title>
 <style>
 :root { --font-body: "Segoe UI", Arial, Helvetica, sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1800,7 +1800,7 @@ CFS-ECIG-SUITE behaviour was a deliberate choice made in that project on
 device's side: <code>0xC0</code> and above belongs to this layer, a product must not define
 a command there, and a bridge routes on the opcode byte alone. This appendix is
 the table that rule reserves the band for.</p>
-<div class="tw"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody><tr><td>0xC0</td><td>CMD_B_PING</td></tr><tr><td>0xC1</td><td>CMD_B_INFO</td></tr><tr><td>0xC2</td><td>CMD_B_GET_CAPS</td></tr><tr><td>0xC3</td><td>CMD_B_GET_STATS</td></tr><tr><td>0xC4</td><td>CMD_B_GET_SNAPSHOT</td></tr><tr><td>0xC5</td><td>CMD_SET_SWD_SPEED</td></tr><tr><td>0xC6</td><td>CMD_SET_TARGET</td></tr><tr><td>0xC7</td><td>CMD_B_GET_VERSION</td></tr><tr><td>0xC8</td><td>CMD_MODE_DEBUG</td></tr><tr><td>0xC9</td><td>CMD_MODE_DOWNLOAD</td></tr><tr><td>0xCA</td><td>CMD_MODE_RAW</td></tr><tr><td>0xCB</td><td>CMD_MODE_BRIDGE_RESET</td></tr><tr><td>0xCC</td><td>CMD_TGT_NRST</td></tr><tr><td>0xCD</td><td>CMD_TGT_POWER</td></tr><tr><td>0xCE</td><td>CMD_BRIDGE_CONF</td></tr><tr><td>0xD0</td><td>CMD_SWD_CONNECT</td></tr><tr><td>0xD1</td><td>CMD_SWD_DISCONNECT</td></tr><tr><td>0xD2</td><td>CMD_SWD_LINE_RESET</td></tr><tr><td>0xD3</td><td>CMD_SWD_JTAG2SWD</td></tr><tr><td>0xD4</td><td>CMD_SWD_READ_IDCODE</td></tr><tr><td>0xD7</td><td>CMD_SWD_CONNECT_UNDER_RESET</td></tr><tr><td>0xD8</td><td>CMD_DP_READ</td></tr><tr><td>0xD9</td><td>CMD_DP_WRITE</td></tr><tr><td>0xDA</td><td>CMD_AP_READ</td></tr><tr><td>0xDB</td><td>CMD_AP_WRITE</td></tr><tr><td>0xE0</td><td>CMD_CORE_HALT</td></tr><tr><td>0xE1</td><td>CMD_CORE_RESUME</td></tr><tr><td>0xE2</td><td>CMD_CORE_STATUS</td></tr><tr><td>0xE3</td><td>CMD_CORE_SYSRESET</td></tr><tr><td>0xE4</td><td>CMD_CORE_RUN_DETACH</td></tr><tr><td>0xE8</td><td>CMD_UPD_BEGIN</td></tr><tr><td>0xE9</td><td>CMD_UPD_DATA</td></tr><tr><td>0xEA</td><td>CMD_UPD_END</td></tr><tr><td>0xEB</td><td>CMD_UPD_STATUS</td></tr><tr><td>0xEC</td><td>CMD_UPD_ABORT</td></tr><tr><td>0xED</td><td>CMD_UPD_APPLY</td></tr><tr><td>0xF0</td><td>CMD_FLASH_ERASE_4K</td></tr><tr><td>0xF1</td><td>CMD_FLASH_PROG_PAGE_128</td></tr><tr><td>0xF2</td><td>CMD_FLASH_PROG_PAGE_128_VERIFY</td></tr><tr><td>0xF3</td><td>CMD_FLASH_READ</td></tr><tr><td>0xF4</td><td>CMD_FLASH_MASS_ERASE</td></tr><tr><td>0xF5</td><td>CMD_FLASH_READ_EX</td></tr><tr><td>0xF8</td><td>CMD_OB_READ</td></tr><tr><td>0xF9</td><td>CMD_OB_WRITE</td></tr><tr><td>0xFA</td><td>CMD_OB_LAUNCH</td></tr><tr><td>0xFB</td><td>CMD_OB_WRITE_AND_LAUNCH</td></tr></tbody></table></div>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody><tr><td>0xC0</td><td>CMD_B_PING</td></tr><tr><td>0xC1</td><td>CMD_B_INFO</td></tr><tr><td>0xC2</td><td>CMD_B_GET_CAPS</td></tr><tr><td>0xC3</td><td>CMD_B_GET_STATS</td></tr><tr><td>0xC4</td><td>CMD_B_GET_SNAPSHOT</td></tr><tr><td>0xC5</td><td>CMD_SET_SWD_SPEED</td></tr><tr><td>0xC6</td><td>CMD_SET_TARGET</td></tr><tr><td>0xC7</td><td>CMD_B_GET_VERSION</td></tr><tr><td>0xC8</td><td>CMD_MODE_DEBUG</td></tr><tr><td>0xC9</td><td>CMD_MODE_DOWNLOAD</td></tr><tr><td>0xCA</td><td>CMD_MODE_RAW</td></tr><tr><td>0xCB</td><td>CMD_MODE_BRIDGE_RESET</td></tr><tr><td>0xCC</td><td>CMD_TGT_NRST</td></tr><tr><td>0xCD</td><td>CMD_TGT_POWER</td></tr><tr><td>0xCE</td><td>CMD_BRIDGE_CONF</td></tr><tr><td>0xD0</td><td>CMD_SWD_CONNECT</td></tr><tr><td>0xD1</td><td>CMD_SWD_DISCONNECT</td></tr><tr><td>0xD2</td><td>CMD_SWD_LINE_RESET</td></tr><tr><td>0xD3</td><td>CMD_SWD_JTAG2SWD</td></tr><tr><td>0xD4</td><td>CMD_SWD_READ_IDCODE</td></tr><tr><td>0xD7</td><td>CMD_SWD_CONNECT_UNDER_RESET</td></tr><tr><td>0xD8</td><td>CMD_DP_READ</td></tr><tr><td>0xD9</td><td>CMD_DP_WRITE</td></tr><tr><td>0xDA</td><td>CMD_AP_READ</td></tr><tr><td>0xDB</td><td>CMD_AP_WRITE</td></tr><tr><td>0xE0</td><td>CMD_CORE_HALT</td></tr><tr><td>0xE1</td><td>CMD_CORE_RESUME</td></tr><tr><td>0xE2</td><td>CMD_CORE_STATUS</td></tr><tr><td>0xE3</td><td>CMD_CORE_SYSRESET</td></tr><tr><td>0xE4</td><td>CMD_CORE_RUN_DETACH</td></tr><tr><td>0xE8</td><td>CMD_UPD_BEGIN</td></tr><tr><td>0xE9</td><td>CMD_UPD_DATA</td></tr><tr><td>0xEA</td><td>CMD_UPD_END</td></tr><tr><td>0xEB</td><td>CMD_UPD_STATUS</td></tr><tr><td>0xEC</td><td>CMD_UPD_ABORT</td></tr><tr><td>0xED</td><td>CMD_UPD_APPLY</td></tr><tr><td>0xF0</td><td>CMD_FLASH_ERASE_SECTOR</td></tr><tr><td>0xF1</td><td>CMD_FLASH_PROG_PAGE</td></tr><tr><td>0xF2</td><td>CMD_FLASH_PROG_PAGE_VERIFY</td></tr><tr><td>0xF3</td><td>CMD_FLASH_READ</td></tr><tr><td>0xF4</td><td>CMD_FLASH_MASS_ERASE</td></tr><tr><td>0xF5</td><td>CMD_FLASH_READ_EX</td></tr><tr><td>0xF8</td><td>CMD_OB_READ</td></tr><tr><td>0xF9</td><td>CMD_OB_WRITE</td></tr><tr><td>0xFA</td><td>CMD_OB_LAUNCH</td></tr><tr><td>0xFB</td><td>CMD_OB_WRITE_AND_LAUNCH</td></tr></tbody></table></div>
 
 <p>Read it as one layer's table, not one board's. Two bridge boards are in service;
 they differ in performance, not in what they answer, and both declare this
@@ -1910,10 +1910,38 @@ KEY).</p>
 bootloader answers <code>ERR_NOT_READY</code> (its catch-all for opcodes it does not
 implement). A host treats <strong>any</strong> error reply as <code>caps = 0</code>: the bridge
 cannot say, so no optional feature is assumed.</p>
+<h3 id="c3-the-flash-units-are-the-targets-cmd_set_target">C.3 The flash units are the target's (<code>CMD_SET_TARGET</code>)</h3>
+<p>The bridge programs and erases the device behind it in that device's own
+units, and those units differ between families: the <code>CWM0508</code>, <code>CWM0524</code>,
+<code>CWM1016</code> and <code>CWM2032</code> families program 128-byte pages and erase 4 KB
+sectors; the <code>CWM30C8</code> family (model <code>0x04</code>, command set 3.1.0) programs
+256-byte pages and erases 8 KB sectors. The three opcodes of the flash block
+therefore carry no size of their own:</p>
+<ul>
+<li><code>CMD_FLASH_ERASE_SECTOR</code> (<code>0xF0</code>) takes <code>[addr u32]</code> and erases the sector
+  that contains <code>addr</code>, aligned down by the bridge;</li>
+<li><code>CMD_FLASH_PROG_PAGE</code> (<code>0xF1</code>) and <code>CMD_FLASH_PROG_PAGE_VERIFY</code> (<code>0xF2</code>)
+  take <code>[addr u32]</code> followed by exactly one page of the selected target. A
+  frame carrying any other number of bytes MUST be answered <code>ERR_BAD_ARGS</code>.
+  The verify form's error reply is <code>[err_code][mismatch_off u8]</code>, the offset
+  of the first differing byte within the page.</li>
+</ul>
+<p>A host learns the units from the bridge rather than from a table of its own:
+from 3.1.0 the <code>CMD_SET_TARGET</code> reply carries <code>[page_size u16 LE]
+[sector_size u16 LE]</code> at offset 20, after the flash base and size it already
+answered. A bridge below 3.1.0 answers 20 bytes and knows no family whose
+units are not 128 B / 4 KB, so a host that stops reading at 20 loses nothing
+on it -- and a host that selects a model the bridge does not know is
+answered <code>ERR_BAD_ARGS</code> before any page is sent, which is what keeps a
+256-byte page from ever reaching a bridge that programs 128.</p>
+<p>Before 3.1.0 these three opcodes were named <code>CMD_FLASH_ERASE_4K</code>,
+<code>CMD_FLASH_PROG_PAGE_128</code> and <code>CMD_FLASH_PROG_PAGE_128_VERIFY</code>. The numbers
+did not move; the names stopped claiming a size.</p>
 <h2 id="d-dut-test-firmwares">D. DUT test firmwares</h2>
-<p>Three small firmwares exist so that a bridge always has a conforming device to
-talk to, one for each chip a bridge is used against: <strong>CWM2032</strong>, <strong>CWM1016</strong>
-and <strong>CWM0508</strong>. They are test targets, not products, and ship in nothing.</p>
+<p>Four small firmwares exist so that a bridge always has a conforming device to
+talk to, one for each chip a bridge is used against: <strong>CWM2032</strong>, <strong>CWM1016</strong>,
+<strong>CWM0508</strong> and <strong>CWM30C8</strong>. They are test targets, not products, and ship in
+nothing.</p>
 <p>Each implements exactly the six opcodes §5.2 requires to be answered in
 <code>OPMODE_NORMAL</code> — <code>CMD_PING</code>, <code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>, <code>CMD_SET_MODE</code>,
 <code>CMD_DBG_ONLINE</code> and <code>CMD_RESET</code> — and nothing else, and each declares the same
@@ -1928,7 +1956,7 @@ place in this list:</p>
 <li>the CFS-ECIG-SUITE firmware, and its host tool;</li>
 <li>each of the two bridge firmwares, each of those two boards' build-metadata
   files, and the bridge host tool;</li>
-<li>each of the three test firmwares of Appendix D.</li>
+<li>each of the four test firmwares of Appendix D.</li>
 </ul>
 <p>None of them is authoritative over the others; a release in which they disagree
 is mis-built, which is the release-bookkeeping rule §9.3 states. The list is the
@@ -1981,12 +2009,19 @@ changelog kept for the purpose, and each names what changed on the wire.</p>
 <li><strong>2.11.0</strong> (2026-09-09) — Writes to <code>CMD_TGT_POWER</code> were placed behind a
   bridge configuration key, so a board able to supply its target's power does
   not do so by default.</li>
-<li><strong>3.0.0</strong> (2026-09-11) — current. <code>CMD_MODE_BRIDGE_RESET</code> gained a third
+<li><strong>3.0.0</strong> (2026-09-11) — <code>CMD_MODE_BRIDGE_RESET</code> gained a third
   target, <code>BRIDGE_RESET_TO_DAP</code> (<code>0x02</code>): a bridge board reboots as a
   CMSIS-DAP v1 HID debug unit instead of its usual CDC persona. See C.1. And
   <code>CMD_B_GET_CAPS</code> (<code>0xC2</code>) went from reserved to implemented: a capability
   word (<code>BCAP_*</code>) saying what the answering firmware can do, so a host no
   longer keeps a per-board table. See C.2.</li>
+<li><strong>3.1.0</strong> (2026-09-13) — current. <code>CMD_SET_TARGET</code> accepts a fifth model,
+  <code>CWM30C8</code> (<code>0x04</code>), and its reply carries the target's program page and
+  erase sector, because that family programs 256-byte pages and erases 8 KB
+  sectors where every earlier one did 128 B / 4 KB. The flash block's three
+  opcodes (<code>0xF0</code>-<code>0xF2</code>) keep their numbers and are renamed to say what
+  they do -- the unit is the selected target's, not the opcode's. See C.3.
+  A fourth test firmware joins Appendix D.</li>
 </ul>
 <p><strong>Where the record runs out.</strong> It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered

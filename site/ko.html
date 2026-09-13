@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V3.0.0</title>
+<title>Celfras Standard Protocol V3.1.0</title>
 <style>
 :root { --font-body: "Noto Sans KR", "Malgun Gothic", sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1716,7 +1716,7 @@ CFS-ECIG-SUITE 는 모드와 함께 그것을 껐다 켰다 한다. 두 동작 �
 <p>브리지는 §1.3 의 중계기이며, §9.2 가 이미 디바이스 쪽에서 본 규칙을 말한다. <code>0xC0</code>
 이상은 이 계층의 것이고, 제품은 거기에 명령을 정의해서는 안 되며, 브리지는 오피코드
 바이트만으로 경로를 정한다. 이 부록은 그 규칙이 대역을 예약해 둔 대상, 즉 그 표이다.</p>
-<div class="tw"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody><tr><td>0xC0</td><td>CMD_B_PING</td></tr><tr><td>0xC1</td><td>CMD_B_INFO</td></tr><tr><td>0xC2</td><td>CMD_B_GET_CAPS</td></tr><tr><td>0xC3</td><td>CMD_B_GET_STATS</td></tr><tr><td>0xC4</td><td>CMD_B_GET_SNAPSHOT</td></tr><tr><td>0xC5</td><td>CMD_SET_SWD_SPEED</td></tr><tr><td>0xC6</td><td>CMD_SET_TARGET</td></tr><tr><td>0xC7</td><td>CMD_B_GET_VERSION</td></tr><tr><td>0xC8</td><td>CMD_MODE_DEBUG</td></tr><tr><td>0xC9</td><td>CMD_MODE_DOWNLOAD</td></tr><tr><td>0xCA</td><td>CMD_MODE_RAW</td></tr><tr><td>0xCB</td><td>CMD_MODE_BRIDGE_RESET</td></tr><tr><td>0xCC</td><td>CMD_TGT_NRST</td></tr><tr><td>0xCD</td><td>CMD_TGT_POWER</td></tr><tr><td>0xCE</td><td>CMD_BRIDGE_CONF</td></tr><tr><td>0xD0</td><td>CMD_SWD_CONNECT</td></tr><tr><td>0xD1</td><td>CMD_SWD_DISCONNECT</td></tr><tr><td>0xD2</td><td>CMD_SWD_LINE_RESET</td></tr><tr><td>0xD3</td><td>CMD_SWD_JTAG2SWD</td></tr><tr><td>0xD4</td><td>CMD_SWD_READ_IDCODE</td></tr><tr><td>0xD7</td><td>CMD_SWD_CONNECT_UNDER_RESET</td></tr><tr><td>0xD8</td><td>CMD_DP_READ</td></tr><tr><td>0xD9</td><td>CMD_DP_WRITE</td></tr><tr><td>0xDA</td><td>CMD_AP_READ</td></tr><tr><td>0xDB</td><td>CMD_AP_WRITE</td></tr><tr><td>0xE0</td><td>CMD_CORE_HALT</td></tr><tr><td>0xE1</td><td>CMD_CORE_RESUME</td></tr><tr><td>0xE2</td><td>CMD_CORE_STATUS</td></tr><tr><td>0xE3</td><td>CMD_CORE_SYSRESET</td></tr><tr><td>0xE4</td><td>CMD_CORE_RUN_DETACH</td></tr><tr><td>0xE8</td><td>CMD_UPD_BEGIN</td></tr><tr><td>0xE9</td><td>CMD_UPD_DATA</td></tr><tr><td>0xEA</td><td>CMD_UPD_END</td></tr><tr><td>0xEB</td><td>CMD_UPD_STATUS</td></tr><tr><td>0xEC</td><td>CMD_UPD_ABORT</td></tr><tr><td>0xED</td><td>CMD_UPD_APPLY</td></tr><tr><td>0xF0</td><td>CMD_FLASH_ERASE_4K</td></tr><tr><td>0xF1</td><td>CMD_FLASH_PROG_PAGE_128</td></tr><tr><td>0xF2</td><td>CMD_FLASH_PROG_PAGE_128_VERIFY</td></tr><tr><td>0xF3</td><td>CMD_FLASH_READ</td></tr><tr><td>0xF4</td><td>CMD_FLASH_MASS_ERASE</td></tr><tr><td>0xF5</td><td>CMD_FLASH_READ_EX</td></tr><tr><td>0xF8</td><td>CMD_OB_READ</td></tr><tr><td>0xF9</td><td>CMD_OB_WRITE</td></tr><tr><td>0xFA</td><td>CMD_OB_LAUNCH</td></tr><tr><td>0xFB</td><td>CMD_OB_WRITE_AND_LAUNCH</td></tr></tbody></table></div>
+<div class="tw"><table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody><tr><td>0xC0</td><td>CMD_B_PING</td></tr><tr><td>0xC1</td><td>CMD_B_INFO</td></tr><tr><td>0xC2</td><td>CMD_B_GET_CAPS</td></tr><tr><td>0xC3</td><td>CMD_B_GET_STATS</td></tr><tr><td>0xC4</td><td>CMD_B_GET_SNAPSHOT</td></tr><tr><td>0xC5</td><td>CMD_SET_SWD_SPEED</td></tr><tr><td>0xC6</td><td>CMD_SET_TARGET</td></tr><tr><td>0xC7</td><td>CMD_B_GET_VERSION</td></tr><tr><td>0xC8</td><td>CMD_MODE_DEBUG</td></tr><tr><td>0xC9</td><td>CMD_MODE_DOWNLOAD</td></tr><tr><td>0xCA</td><td>CMD_MODE_RAW</td></tr><tr><td>0xCB</td><td>CMD_MODE_BRIDGE_RESET</td></tr><tr><td>0xCC</td><td>CMD_TGT_NRST</td></tr><tr><td>0xCD</td><td>CMD_TGT_POWER</td></tr><tr><td>0xCE</td><td>CMD_BRIDGE_CONF</td></tr><tr><td>0xD0</td><td>CMD_SWD_CONNECT</td></tr><tr><td>0xD1</td><td>CMD_SWD_DISCONNECT</td></tr><tr><td>0xD2</td><td>CMD_SWD_LINE_RESET</td></tr><tr><td>0xD3</td><td>CMD_SWD_JTAG2SWD</td></tr><tr><td>0xD4</td><td>CMD_SWD_READ_IDCODE</td></tr><tr><td>0xD7</td><td>CMD_SWD_CONNECT_UNDER_RESET</td></tr><tr><td>0xD8</td><td>CMD_DP_READ</td></tr><tr><td>0xD9</td><td>CMD_DP_WRITE</td></tr><tr><td>0xDA</td><td>CMD_AP_READ</td></tr><tr><td>0xDB</td><td>CMD_AP_WRITE</td></tr><tr><td>0xE0</td><td>CMD_CORE_HALT</td></tr><tr><td>0xE1</td><td>CMD_CORE_RESUME</td></tr><tr><td>0xE2</td><td>CMD_CORE_STATUS</td></tr><tr><td>0xE3</td><td>CMD_CORE_SYSRESET</td></tr><tr><td>0xE4</td><td>CMD_CORE_RUN_DETACH</td></tr><tr><td>0xE8</td><td>CMD_UPD_BEGIN</td></tr><tr><td>0xE9</td><td>CMD_UPD_DATA</td></tr><tr><td>0xEA</td><td>CMD_UPD_END</td></tr><tr><td>0xEB</td><td>CMD_UPD_STATUS</td></tr><tr><td>0xEC</td><td>CMD_UPD_ABORT</td></tr><tr><td>0xED</td><td>CMD_UPD_APPLY</td></tr><tr><td>0xF0</td><td>CMD_FLASH_ERASE_SECTOR</td></tr><tr><td>0xF1</td><td>CMD_FLASH_PROG_PAGE</td></tr><tr><td>0xF2</td><td>CMD_FLASH_PROG_PAGE_VERIFY</td></tr><tr><td>0xF3</td><td>CMD_FLASH_READ</td></tr><tr><td>0xF4</td><td>CMD_FLASH_MASS_ERASE</td></tr><tr><td>0xF5</td><td>CMD_FLASH_READ_EX</td></tr><tr><td>0xF8</td><td>CMD_OB_READ</td></tr><tr><td>0xF9</td><td>CMD_OB_WRITE</td></tr><tr><td>0xFA</td><td>CMD_OB_LAUNCH</td></tr><tr><td>0xFB</td><td>CMD_OB_WRITE_AND_LAUNCH</td></tr></tbody></table></div>
 
 <p>이 표를 한 보드의 표가 아니라 한 계층의 표로 읽으라. 두 종류의 브리지 보드가 현업에
 쓰이고 있다. 둘은 성능에서 다를 뿐 무엇에 응답하는지에서는 다르지 않으며, 둘 다 이 표를
@@ -1816,10 +1816,34 @@ DAP 페르소나, KEY 는 없다)로 답한다.</p>
 미구현 오피코드에 대한 기본 응답인 <code>ERR_NOT_READY</code> 를 답한다. 호스트는 <strong>어떤</strong>
 오류 응답이든 <code>caps = 0</code> 으로 다룬다. 브리지가 말할 수
 없으니 어떤 선택 기능도 있다고 가정하지 않는다.</p>
+<h3 id="c3-cmd_set_target">C.3 플래시 단위는 대상의 것이다 (<code>CMD_SET_TARGET</code>)</h3>
+<p>브리지는 뒤에 있는 디바이스를 그 디바이스 자신의 단위로 프로그램하고 소거하며, 그
+단위는 패밀리마다 다르다. <code>CWM0508</code>, <code>CWM0524</code>, <code>CWM1016</code>, <code>CWM2032</code> 패밀리는
+128 바이트 페이지를 프로그램하고 4 KB 섹터를 소거한다. <code>CWM30C8</code> 패밀리(모델
+<code>0x04</code>, 명령 집합 3.1.0)는 256 바이트 페이지를 프로그램하고 8 KB 섹터를 소거한다.
+그러므로 플래시 블록의 세 오피코드는 자신의 크기를 갖지 않는다.</p>
+<ul>
+<li><code>CMD_FLASH_ERASE_SECTOR</code>(<code>0xF0</code>)는 <code>[addr u32]</code> 를 받아 <code>addr</code> 을 포함하는
+  섹터를 소거한다. 정렬은 브리지가 내림으로 한다.</li>
+<li><code>CMD_FLASH_PROG_PAGE</code>(<code>0xF1</code>)와 <code>CMD_FLASH_PROG_PAGE_VERIFY</code>(<code>0xF2</code>)는
+  <code>[addr u32]</code> 뒤에 선택된 대상의 페이지 정확히 하나를 받는다. 그 외의 바이트 수를
+  실은 프레임에는 <code>ERR_BAD_ARGS</code> 로 답하여야 한다. 검증형의 오류 응답은
+  <code>[err_code][mismatch_off u8]</code> 이며, 페이지 안에서 처음 다른 바이트의 오프셋이다.</li>
+</ul>
+<p>호스트는 단위를 자기 표가 아니라 브리지에게서 배운다. 3.1.0 부터 <code>CMD_SET_TARGET</code>
+응답은 이미 답하던 플래시 베이스와 크기 뒤, 오프셋 20 에 <code>[page_size u16 LE]
+[sector_size u16 LE]</code> 를 싣는다. 3.1.0 미만의 브리지는 20 바이트를 답하며 단위가
+128 B / 4 KB 가 아닌 패밀리를 알지 못하므로, 20 에서 읽기를 멈추는 호스트는 그
+브리지에서 잃는 것이 없다. 그리고 브리지가 모르는 모델을 고른 호스트는 페이지를
+하나도 보내기 전에 <code>ERR_BAD_ARGS</code> 를 받으므로, 256 바이트 페이지가 128 을
+프로그램하는 브리지에 닿는 일은 없다.</p>
+<p>3.1.0 이전에 이 세 오피코드의 이름은 <code>CMD_FLASH_ERASE_4K</code>,
+<code>CMD_FLASH_PROG_PAGE_128</code>, <code>CMD_FLASH_PROG_PAGE_128_VERIFY</code> 였다. 번호는 움직이지
+않았다. 이름이 크기를 주장하기를 그만두었을 뿐이다.</p>
 <h2 id="d-dut">D. DUT 시험 펌웨어</h2>
-<p>브리지가 언제나 대화할 적합한 디바이스를 갖도록 세 개의 작은 펌웨어가 존재하며, 브리지가
-상대하는 칩마다 하나씩이다. <strong>CWM2032</strong>, <strong>CWM1016</strong>, <strong>CWM0508</strong>. 이들은 제품이 아니라
-시험 대상이며 어디에도 출하되지 않는다.</p>
+<p>브리지가 언제나 대화할 적합한 디바이스를 갖도록 네 개의 작은 펌웨어가 존재하며, 브리지가
+상대하는 칩마다 하나씩이다. <strong>CWM2032</strong>, <strong>CWM1016</strong>, <strong>CWM0508</strong>, <strong>CWM30C8</strong>. 이들은
+제품이 아니라 시험 대상이며 어디에도 출하되지 않는다.</p>
 <p>각각은 §5.2 가 <code>OPMODE_NORMAL</code> 에서 응답하도록 요구하는 여섯 개의 오피코드 —
 <code>CMD_PING</code>, <code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>, <code>CMD_SET_MODE</code>, <code>CMD_DBG_ONLINE</code>,
 <code>CMD_RESET</code> — 만을 정확히 구현하고 그 밖에는 아무것도 구현하지 않으며, 각각 제품들과
@@ -1832,7 +1856,7 @@ DAP 페르소나, KEY 는 없다)로 답한다.</p>
 <ul>
 <li>CFS-ECIG-SUITE 펌웨어와 그 호스트 도구.</li>
 <li>두 브리지 펌웨어 각각, 그 두 보드의 빌드 메타데이터 파일 각각, 그리고 브리지 호스트 도구.</li>
-<li>부록 D 의 세 시험 펌웨어 각각.</li>
+<li>부록 D 의 네 시험 펌웨어 각각.</li>
 </ul>
 <p>이들 중 어느 것도 다른 것에 대해 권위를 갖지 않는다. 이들이 서로 어긋나는 릴리스는 잘못
 빌드된 것이며, 그것이 §9.3 이 말하는 릴리스 장부 규칙이다. 목록이 곧 사실이며, 그 옆에
@@ -1875,12 +1899,19 @@ DAP 페르소나, KEY 는 없다)로 답한다.</p>
   결함 횟수까지 함께 돌려주는 읽기.</li>
 <li><strong>2.11.0</strong> (2026-09-09) — <code>CMD_TGT_POWER</code> 에 대한 쓰기가 브리지 설정 키 뒤로
   옮겨졌다. 대상의 전원을 공급할 수 있는 보드가 기본적으로는 공급하지 않게 하기 위함이다.</li>
-<li><strong>3.0.0</strong> (2026-09-11) — 현재. <code>CMD_MODE_BRIDGE_RESET</code> 이 세 번째 대상
+<li><strong>3.0.0</strong> (2026-09-11) — <code>CMD_MODE_BRIDGE_RESET</code> 이 세 번째 대상
   <code>BRIDGE_RESET_TO_DAP</code>(<code>0x02</code>)을 얻었다: 브리지 보드가 평소의 CDC 페르소나 대신
   CMSIS-DAP v1 HID 디버그 장치로 재부팅한다. C.1 참고. 그리고 <code>CMD_B_GET_CAPS</code>
   (<code>0xC2</code>)가 예약에서 구현으로 바뀌었다: 응답하는 펌웨어가 무엇을 할 수 있는지를
   말하는 기능 워드(<code>BCAP_*</code>)로, 호스트가 더 이상 보드별 표를 들고 다니지 않는다.
   C.2 참고.</li>
+<li><strong>3.1.0</strong> (2026-09-13) — 현재. <code>CMD_SET_TARGET</code> 이 다섯 번째 모델 <code>CWM30C8</code>
+  (<code>0x04</code>)을 받아들이고, 그 응답이 대상의 프로그램 페이지와 소거 섹터를 싣는다. 그
+  패밀리는 이전의 모든 패밀리가 128 B / 4 KB 였던 자리에서 256 바이트 페이지를
+  프로그램하고 8 KB 섹터를 소거하기 때문이다. 플래시 블록의 세 오피코드
+  (<code>0xF0</code>-<code>0xF2</code>)는 번호를 유지한 채 하는 일을 말하는 이름으로 바뀌었다 — 단위는
+  오피코드의 것이 아니라 선택된 대상의 것이다. C.3 참고. 부록 D 에 네 번째 시험
+  펌웨어가 더해졌다.</li>
 </ul>
 <p><strong>기록이 끊기는 곳.</strong> 기록은 2.0.0 아래에서 끊기며, 복원할 것도 없다. 명령 집합 버전은
 2026-08-21 에 도입될 때 이미 2.0.0 으로 번호가 매겨졌고, 1.x 를 선언한 구현은 존재한 적이

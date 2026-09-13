@@ -26,7 +26,7 @@ def test_all_three_languages_are_built(public_build):
 
 def test_filename_carries_the_cmd_set_version(public_build):
     for lang, p in public_build["pdfs"].items():
-        assert p.name.startswith("Celfras Standard Protocol V3.0.0 (")
+        assert p.name.startswith("Celfras Standard Protocol V3.1.0 (")
         assert p.name.endswith(f"({lang.upper()}).pdf")
 
 

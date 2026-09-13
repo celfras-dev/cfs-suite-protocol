@@ -21,7 +21,7 @@ def test_writes_all_generated_files(tmp_path: Path):
 def test_version_json_shape(tmp_path: Path):
     extract_all.run(tmp_path, internal=False)
     d = json.loads((tmp_path / "version.json").read_text(encoding="utf-8"))
-    assert d["cmd_set_version"] == "3.0.0"
+    assert d["cmd_set_version"] == "3.1.0"
     assert d["edition"] == "public"
 
 

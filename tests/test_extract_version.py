@@ -5,7 +5,7 @@ from tools.extract import sources, version
 
 
 def test_extract_returns_current_cmd_set_version():
-    assert version.extract() == (3, 1, 0)
+    assert version.extract() == (4, 0, 0)
 
 
 def test_collect_sees_every_known_copy():

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V3.1.0</title>
+<title>Celfras Standard Protocol V4.0.0</title>
 <style>
 :root { --font-body: "Noto Sans KR", "Malgun Gothic", sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1840,6 +1840,42 @@ DAP 페르소나, KEY 는 없다)로 답한다.</p>
 <p>3.1.0 이전에 이 세 오피코드의 이름은 <code>CMD_FLASH_ERASE_4K</code>,
 <code>CMD_FLASH_PROG_PAGE_128</code>, <code>CMD_FLASH_PROG_PAGE_128_VERIFY</code> 였다. 번호는 움직이지
 않았다. 이름이 크기를 주장하기를 그만두었을 뿐이다.</p>
+<h3 id="c4-uart-rtt-bconf_dut_transport">C.4 디바이스 전송계층: UART 또는 RTT (<code>BCONF_DUT_TRANSPORT</code>)</h3>
+<p>기본적으로 브릿지는 디바이스 밴드(<code>0x00</code>-<code>0xBF</code>)를 UART 로 디바이스에 중계한다 —
+브릿지가 SWD 를 구동하지 않을 때 SWD 공유 두 핀이 나르는 그 선이다. 명령 집합
+4.0.0 부터 브릿지는 같은 밴드에 대해 두 번째 전송계층을 제공할 수 있으며(MAY),
+<code>CMD_BRIDGE_CONF</code> 의 <code>BCONF_DUT_TRANSPORT</code> 파라미터로 런타임에 선택한다.</p>
+<ul>
+<li>값 <code>0x00</code> (<code>DUT_TRANSPORT_UART</code>) — 종전대로의 UART 중계. 기본값이며 어떤 리셋
+  뒤에도 이 상태로 돌아온다.</li>
+<li>값 <code>0x01</code> (<code>DUT_TRANSPORT_RTT</code>) — 브릿지가 중계 모드에 있는 동안 하나의 SWD
+  세션을 계속 열어 두고, 같은 프레임을 디바이스 RAM 의 링버퍼 한 쌍을 통해
+  옮긴다. 디바이스 코어를 멈추지 않은 채 디버그 MEM-AP 로 접근한다. 컨트롤
+  블록의 배치와 위치는 SEGGER RTT 의 것과 똑같아서(16바이트 id 문자열, 이어서
+  "up" 과 "down" 링), 일반적인 RTT 호스트 도구도 이를 볼 수 있다. 실리는
+  프레임은 UART 가 날랐을 프레임과 바이트 단위로 동일하며, 전송계층 위의 것은
+  아무것도 바뀌지 않는다.</li>
+</ul>
+<p>RTT 는 UART 주변장치가 없어 링크 비트율로 소프트웨어 수신을 할 수 없는 디바이스를
+위해 존재한다. 모든 Cortex-M 디바이스에는 SWD 가 있고, 이 보드들에서는 디바이스의
+UART 핀이 곧 그 SWD 핀이므로, 이 전송계층은 그 핀을 두 역할 사이에서 넘길 필요가
+전혀 없다.</p>
+<p>이 파라미터의 응답은 — 그리고 오직 이 파라미터만 — 모든 <code>CMD_BRIDGE_CONF</code> 응답이
+돌려주는 <code>[par][val]</code> 뒤에 두 필드를 더 싣는다.</p>
+<pre><code>[OK][par][val][link u8][cb_addr u32 LE]
+</code></pre>
+<p><code>link</code> 은 <code>0</code> idle(전송계층이 UART), <code>1</code> down(RTT 가 선택됐으나 아직 SWD 세션
+없음), <code>2</code> searching(세션은 올라왔고 브릿지가 디바이스 RAM 에서 컨트롤 블록을
+스캔 중), <code>3</code> up(블록을 찾아 중계 중)이다. <code>cb_addr</code> 은 <code>link</code> 이 <code>3</code> 일 때 그
+블록의 주소이고, 그 외에는 <code>0</code> 이다. <code>[par][val]</code> 만 아는 호스트는 그 두 바이트만
+읽고 나머지는 무시한다.</p>
+<p>RTT 전송계층이 선택됐지만 링크가 아직 올라오지 않은 동안, 디바이스 프레임은
+<code>[ERR][ERR_NOT_READY][link u8]</code> 로 응답된다 — 중계 모드가 프레임을 전달할 수 없을
+때 주는 것과 같은 거절이되, 디테일 바이트에 링크 상태가 실려서 호스트가 "아직
+디바이스 없음" 과 "아직 탐색 중" 을 구별할 수 있다.</p>
+<p>4.0.0 미만의 브릿지, RTT 엔진이 없는 브릿지, 그리고 CMSIS-DAP 인격은 모두 이
+파라미터에 <code>ERR_BAD_ARGS</code> 로 답하며, 이것이 호스트가 지원 여부를 프로빙하는
+방법이다. 이 설정은 지속되지 않는다. 리셋된 브릿지는 UART 전송계층으로 돌아온다.</p>
 <h2 id="d-dut">D. DUT 시험 펌웨어</h2>
 <p>브리지가 언제나 대화할 적합한 디바이스를 갖도록 네 개의 작은 펌웨어가 존재하며, 브리지가
 상대하는 칩마다 하나씩이다. <strong>CWM2032</strong>, <strong>CWM1016</strong>, <strong>CWM0508</strong>, <strong>CWM30C8</strong>. 이들은
@@ -1905,13 +1941,21 @@ DAP 페르소나, KEY 는 없다)로 답한다.</p>
   (<code>0xC2</code>)가 예약에서 구현으로 바뀌었다: 응답하는 펌웨어가 무엇을 할 수 있는지를
   말하는 기능 워드(<code>BCAP_*</code>)로, 호스트가 더 이상 보드별 표를 들고 다니지 않는다.
   C.2 참고.</li>
-<li><strong>3.1.0</strong> (2026-09-13) — 현재. <code>CMD_SET_TARGET</code> 이 다섯 번째 모델 <code>CWM30C8</code>
+<li><strong>3.1.0</strong> (2026-09-13) — <code>CMD_SET_TARGET</code> 이 다섯 번째 모델 <code>CWM30C8</code>
   (<code>0x04</code>)을 받아들이고, 그 응답이 대상의 프로그램 페이지와 소거 섹터를 싣는다. 그
   패밀리는 이전의 모든 패밀리가 128 B / 4 KB 였던 자리에서 256 바이트 페이지를
   프로그램하고 8 KB 섹터를 소거하기 때문이다. 플래시 블록의 세 오피코드
   (<code>0xF0</code>-<code>0xF2</code>)는 번호를 유지한 채 하는 일을 말하는 이름으로 바뀌었다 — 단위는
   오피코드의 것이 아니라 선택된 대상의 것이다. C.3 참고. 부록 D 에 네 번째 시험
   펌웨어가 더해졌다.</li>
+<li><strong>4.0.0</strong> (2026-09-15) — 현재. 디바이스 밴드를 위한 두 번째 전송계층이다.
+  <code>BCONF_DUT_TRANSPORT</code> 가 UART 중계(기본값)와, SWD 로 디바이스 RAM 을 거치는
+  RTT 방식 채널 중 하나를 고른다 — UART 를 돌릴 수 없는 디바이스를 위한 것이다.
+  그 응답은 링크 상태와 컨트롤 블록 주소를 싣고, 링크가 아직 올라오지 않아 거절된
+  디바이스 프레임은 그 상태와 함께 <code>ERR_NOT_READY</code> 로 답한다. C.4 참고. 이 변경은
+  가산적이며 — UART 전송계층은 그대로이고 기존의 모든 교환은 바이트 단위로 동일하다
+  — 오피코드가 움직이거나 뜻이 바뀌어서가 아니라 이 정도 규모의 변경에 대한 프로젝트
+  결정으로 메이저로 배포한다.</li>
 </ul>
 <p><strong>기록이 끊기는 곳.</strong> 기록은 2.0.0 아래에서 끊기며, 복원할 것도 없다. 명령 집합 버전은
 2026-08-21 에 도입될 때 이미 2.0.0 으로 번호가 매겨졌고, 1.x 를 선언한 구현은 존재한 적이

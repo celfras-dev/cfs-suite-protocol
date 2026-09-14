@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V3.1.0</title>
+<title>Celfras Standard Protocol V4.0.0</title>
 <style>
 :root { --font-body: "Microsoft YaHei", "Noto Sans SC", sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1679,6 +1679,37 @@ BRD01 应答 <code>0x4B</code>(nRESET、可开关供电、<code>CMD_FLASH_READ_E
 编程 128 字节的桥接器的机制。</p>
 <p>在 3.1.0 之前这三个操作码名为 <code>CMD_FLASH_ERASE_4K</code>、<code>CMD_FLASH_PROG_PAGE_128</code> 与
 <code>CMD_FLASH_PROG_PAGE_128_VERIFY</code>。编号没有移动;只是名字不再宣称某个尺寸。</p>
+<h3 id="c4-uart-rttbconf_dut_transport">C.4 设备传输层:UART 或 RTT(<code>BCONF_DUT_TRANSPORT</code>)</h3>
+<p>默认情况下,桥接器通过 UART 把设备频段(<code>0x00</code>-<code>0xBF</code>)中继给设备 —— 也就是桥接器
+不驱动 SWD 时那两根 SWD 共享引脚所承载的线路。从命令集 4.0.0 起,桥接器可以(MAY)
+为同一频段提供第二种传输层,由 <code>CMD_BRIDGE_CONF</code> 的 <code>BCONF_DUT_TRANSPORT</code> 参数在
+运行时选择:</p>
+<ul>
+<li>取值 <code>0x00</code>(<code>DUT_TRANSPORT_UART</code>)—— 一如既往的 UART 中继。这是默认值,也是任何
+  复位之后的状态。</li>
+<li>取值 <code>0x01</code>(<code>DUT_TRANSPORT_RTT</code>)—— 桥接器在其处于中继模式期间始终保持一个 SWD
+  会话打开,并在设备内核运行的同时,经调试 MEM-AP 把同样的帧通过设备 RAM 中的一对
+  环形缓冲区搬运。控制块的布局与位置与 SEGGER RTT 完全相同(16 字节 id 字符串,随后
+  是一个 "up" 环与一个 "down" 环),因此普通的 RTT 主机工具也能看到它。所承载的帧
+  与 UART 会承载的帧逐字节相同;传输层之上的一切都不改变。</li>
+</ul>
+<p>RTT 是为那种没有 UART 外设、因而无法以链路比特率进行软件接收的设备而存在的;而每一颗
+Cortex-M 设备都有 SWD,并且在这些板子上设备的 UART 引脚就是它的 SWD 引脚,所以这种
+传输层从不需要在两种角色之间倒换这些引脚。</p>
+<p>该参数的应答 —— 且仅有该参数 —— 在每个 <code>CMD_BRIDGE_CONF</code> 应答都会返回的 <code>[par][val]</code>
+之后再携带两个字段:</p>
+<pre><code>[OK][par][val][link u8][cb_addr u32 LE]
+</code></pre>
+<p><code>link</code> 为 <code>0</code> 空闲(传输层是 UART)、<code>1</code> down(已选 RTT,但尚无 SWD 会话)、<code>2</code>
+searching(会话已建立,桥接器正在设备 RAM 中扫描控制块)或 <code>3</code> up(已找到控制块并在
+中继)。<code>cb_addr</code> 在 <code>link</code> 为 <code>3</code> 时是该控制块的地址,否则为 <code>0</code>。只认识 <code>[par][val]</code>
+的主机读取那两个字节并忽略其余。</p>
+<p>当已选 RTT 传输层但链路尚未建立时,设备帧以 <code>[ERR][ERR_NOT_READY][link u8]</code> 应答 ——
+与中继模式无法投递一帧时给出的拒绝相同,只是在明细字节中带上链路状态,使主机能区分
+"尚无设备" 与 "仍在搜索"。</p>
+<p>低于 4.0.0 的桥接器、没有 RTT 引擎的桥接器,以及 CMSIS-DAP 人格,都会对该参数应答
+<code>ERR_BAD_ARGS</code>,这正是主机探测其支持与否的办法。该设置不持久化:复位后的桥接器回到
+UART 传输层。</p>
 <h2 id="d-dut">D. DUT 测试固件</h2>
 <p>存在四份小固件,以便桥接器总有一台符合本标准的设备可以对话,桥接器所面对的每一颗
 芯片各一份:<strong>CWM2032</strong>、<strong>CWM1016</strong>、<strong>CWM0508</strong> 和 <strong>CWM30C8</strong>。它们是测试目标,
@@ -1739,11 +1770,17 @@ BRD01 应答 <code>0x4B</code>(nRESET、可开关供电、<code>CMD_FLASH_READ_E
   CMSIS-DAP v1 HID 调试单元。见 C.1。同时 <code>CMD_B_GET_CAPS</code>(<code>0xC2</code>)由保留变为已
   实现:一个能力字(<code>BCAP_*</code>),说明应答的固件能做什么,主机从此不必再维护按板列出
   的表。见 C.2。</li>
-<li><strong>3.1.0</strong>(2026-09-13)—— 当前版本。<code>CMD_SET_TARGET</code> 接受第五个型号 <code>CWM30C8</code>
+<li><strong>3.1.0</strong>(2026-09-13)—— <code>CMD_SET_TARGET</code> 接受第五个型号 <code>CWM30C8</code>
   (<code>0x04</code>),其应答携带目标的编程页与擦除扇区,因为该系列以 256 字节页编程、以 8 KB
   扇区擦除,而此前每个系列都是 128 B / 4 KB。闪存块的三个操作码(<code>0xF0</code>-<code>0xF2</code>)编号
   不变,改名为说明其所做之事的名字 —— 单位属于所选目标,而不属于操作码。见 C.3。
   附录 D 加入第四份测试固件。</li>
+<li><strong>4.0.0</strong>(2026-09-15)—— 当前版本。为设备频段提供第二种传输层:
+  <code>BCONF_DUT_TRANSPORT</code> 在 UART 中继(默认)与经 SWD 穿过设备 RAM 的 RTT 式通道
+  之间选择 —— 为无法运行 UART 的设备而设。其应答携带链路状态与控制块地址,而因链路
+  尚未建立被拒绝的设备帧会连同该状态以 <code>ERR_NOT_READY</code> 应答。见 C.4。此变更是可加的
+  —— UART 传输层不变,既有的每一次交换都逐字节相同 —— 并非因为某个操作码移动或改变
+  含义,而是出于对这一规模变更的项目决定,作为一次大版本发布。</li>
 </ul>
 <p><strong>记录到哪里为止。</strong> 它到 2.0.0 以下就没有了,而且无从追回:命令集版本是 2026-08-21
 引入的,一引入就编号为 2.0.0,从来没有任何实现声明过 1.x。参考固件自己那份协议文档

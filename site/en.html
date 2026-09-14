@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V3.1.0</title>
+<title>Celfras Standard Protocol V4.0.0</title>
 <style>
 :root { --font-body: "Segoe UI", Arial, Helvetica, sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1937,6 +1937,45 @@ answered <code>ERR_BAD_ARGS</code> before any page is sent, which is what keeps 
 <p>Before 3.1.0 these three opcodes were named <code>CMD_FLASH_ERASE_4K</code>,
 <code>CMD_FLASH_PROG_PAGE_128</code> and <code>CMD_FLASH_PROG_PAGE_128_VERIFY</code>. The numbers
 did not move; the names stopped claiming a size.</p>
+<h3 id="c4-the-device-transport-uart-or-rtt-bconf_dut_transport">C.4 The device transport: UART or RTT (<code>BCONF_DUT_TRANSPORT</code>)</h3>
+<p>By default the bridge relays the device band (<code>0x00</code>-<code>0xBF</code>) over a UART to the
+device — the wire the two SWD-shared pins carry when the bridge is not driving
+SWD. From command set 4.0.0 a bridge MAY offer a second transport for that same
+band, chosen at run time by the <code>BCONF_DUT_TRANSPORT</code> parameter of
+<code>CMD_BRIDGE_CONF</code>:</p>
+<ul>
+<li>value <code>0x00</code> (<code>DUT_TRANSPORT_UART</code>) — the UART relay, as before. This is the
+  default and the state after any reset.</li>
+<li>value <code>0x01</code> (<code>DUT_TRANSPORT_RTT</code>) — the bridge holds one SWD session open
+  for as long as it is in the relaying mode and moves the same frames through a
+  pair of ring buffers in the device's RAM, reached over the debug MEM-AP with
+  the device's core running. The control block is laid out and located exactly
+  as SEGGER RTT's is (a 16-byte id string, then an "up" and a "down" ring),
+  which lets ordinary RTT host tools see it too. The frames carried are
+  byte-for-byte the frames the UART would have carried; nothing above the
+  transport changes.</li>
+</ul>
+<p>RTT exists for the device that has no UART peripheral and so cannot receive at
+the link's bit rate in software, while every Cortex-M device has SWD; and
+because on these boards the device's UART pins <em>are</em> its SWD pins, this
+transport never has to pass those pins between the two roles.</p>
+<p>The reply to this parameter — and to this one alone — carries two fields beyond
+the <code>[par][val]</code> every <code>CMD_BRIDGE_CONF</code> reply returns:</p>
+<pre><code>[OK][par][val][link u8][cb_addr u32 LE]
+</code></pre>
+<p><code>link</code> is <code>0</code> idle (the transport is UART), <code>1</code> down (RTT selected, no SWD
+session yet), <code>2</code> searching (the session is up and the bridge is scanning device
+RAM for the control block), or <code>3</code> up (the block is found and the bridge is
+relaying). <code>cb_addr</code> is that block's address once <code>link</code> is <code>3</code>, and <code>0</code>
+otherwise. A host that knows only <code>[par][val]</code> reads those two bytes and ignores
+the rest.</p>
+<p>While the RTT transport is selected but the link is not yet up, a device frame
+is answered <code>[ERR][ERR_NOT_READY][link u8]</code> — the same refusal the relaying mode
+gives when it cannot deliver a frame, with the link state as the detail byte, so
+a host can tell "no device yet" from "still searching".</p>
+<p>A bridge below 4.0.0, a bridge with no RTT engine, and the CMSIS-DAP persona all
+answer <code>ERR_BAD_ARGS</code> to this parameter, which is how a host probes for it. The
+setting is not persisted: a reset bridge is back on the UART transport.</p>
 <h2 id="d-dut-test-firmwares">D. DUT test firmwares</h2>
 <p>Four small firmwares exist so that a bridge always has a conforming device to
 talk to, one for each chip a bridge is used against: <strong>CWM2032</strong>, <strong>CWM1016</strong>,
@@ -2015,13 +2054,22 @@ changelog kept for the purpose, and each names what changed on the wire.</p>
   <code>CMD_B_GET_CAPS</code> (<code>0xC2</code>) went from reserved to implemented: a capability
   word (<code>BCAP_*</code>) saying what the answering firmware can do, so a host no
   longer keeps a per-board table. See C.2.</li>
-<li><strong>3.1.0</strong> (2026-09-13) — current. <code>CMD_SET_TARGET</code> accepts a fifth model,
+<li><strong>3.1.0</strong> (2026-09-13) — <code>CMD_SET_TARGET</code> accepts a fifth model,
   <code>CWM30C8</code> (<code>0x04</code>), and its reply carries the target's program page and
   erase sector, because that family programs 256-byte pages and erases 8 KB
   sectors where every earlier one did 128 B / 4 KB. The flash block's three
   opcodes (<code>0xF0</code>-<code>0xF2</code>) keep their numbers and are renamed to say what
   they do -- the unit is the selected target's, not the opcode's. See C.3.
   A fourth test firmware joins Appendix D.</li>
+<li><strong>4.0.0</strong> (2026-09-15) — current. A second transport for the device band:
+  <code>BCONF_DUT_TRANSPORT</code> selects the UART relay (default) or an RTT-style
+  channel through the device's RAM over SWD, for a device that cannot run a
+  UART. Its reply carries a link state and the control-block address, and a
+  device frame refused because the link is not yet up answers
+  <code>ERR_NOT_READY</code> with that state. See C.4. The change is additive — the UART
+  transport is unchanged and every existing exchange is byte-identical — and
+  is released as a major by project decision for a change of this reach, not
+  because an opcode moved or changed meaning.</li>
 </ul>
 <p><strong>Where the record runs out.</strong> It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered

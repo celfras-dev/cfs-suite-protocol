@@ -19,6 +19,7 @@ def test_collect_sees_every_known_copy():
         "CFS-SUITE-BRIDGE/fw_dut/cwm1016/App/Inc/app_proto.h",
         "CFS-SUITE-BRIDGE/fw_dut/cwm0508/App/Inc/app_proto.h",
         "CFS-SUITE-BRIDGE/fw_dut/cwm30c8/App/Inc/app_proto.h",
+        "CFS-SUITE-BRIDGE/fw_dut/cwm25c8/App/Inc/app_proto.h",
         "CFS-ECIG-SUITE/pc_app/conf/cmd_set.json",
         "CFS-SUITE-BRIDGE/pc_app/cfsbridge/commands.py",
         "CFS-SUITE-BRIDGE/fw/brd01/board.txt",

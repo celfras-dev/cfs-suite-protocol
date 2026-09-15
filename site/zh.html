@@ -1712,8 +1712,8 @@ searching(会话已建立,桥接器正在设备 RAM 中扫描控制块)或 <code
 <code>ERR_BAD_ARGS</code>,这正是主机探测其支持与否的办法。该设置不持久化:复位后的桥接器回到
 UART 传输层。</p>
 <h2 id="d-dut">D. DUT 测试固件</h2>
-<p>存在四份小固件,以便桥接器总有一台符合本标准的设备可以对话,桥接器所面对的每一颗
-芯片各一份:<strong>CWM2032</strong>、<strong>CWM1016</strong>、<strong>CWM0508</strong> 和 <strong>CWM30C8</strong>。它们是测试目标,
+<p>存在五份小固件,以便桥接器总有一台符合本标准的设备可以对话,桥接器所面对的每一颗
+芯片各一份:<strong>CWM2032</strong>、<strong>CWM1016</strong>、<strong>CWM0508</strong>、<strong>CWM30C8</strong> 和 <strong>CWM25C8</strong>。它们是测试目标,
 不是产品,不随任何东西出货。</p>
 <p>每一份都恰好实现 §5.2 要求在 <code>OPMODE_NORMAL</code> 下被应答的那六个操作码 ——
 <code>CMD_PING</code>、<code>CMD_INFO</code>、<code>CMD_GET_VERSION</code>、<code>CMD_SET_MODE</code>、<code>CMD_DBG_ONLINE</code> 和

@@ -1978,10 +1978,10 @@ a host can tell "no device yet" from "still searching".</p>
 answer <code>ERR_BAD_ARGS</code> to this parameter, which is how a host probes for it. The
 setting is not persisted: a reset bridge is back on the UART transport.</p>
 <h2 id="d-dut-test-firmwares">D. DUT test firmwares</h2>
-<p>Four small firmwares exist so that a bridge always has a conforming device to
+<p>Five small firmwares exist so that a bridge always has a conforming device to
 talk to, one for each chip a bridge is used against: <strong>CWM2032</strong>, <strong>CWM1016</strong>,
-<strong>CWM0508</strong> and <strong>CWM30C8</strong>. They are test targets, not products, and ship in
-nothing.</p>
+<strong>CWM0508</strong>, <strong>CWM30C8</strong> and <strong>CWM25C8</strong>. They are test targets, not products,
+and ship in nothing.</p>
 <p>Each implements exactly the six opcodes §5.2 requires to be answered in
 <code>OPMODE_NORMAL</code> — <code>CMD_PING</code>, <code>CMD_INFO</code>, <code>CMD_GET_VERSION</code>, <code>CMD_SET_MODE</code>,
 <code>CMD_DBG_ONLINE</code> and <code>CMD_RESET</code> — and nothing else, and each declares the same

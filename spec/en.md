@@ -1675,10 +1675,10 @@ setting is not persisted: a reset bridge is back on the UART transport.
 
 ## D. DUT test firmwares
 
-Four small firmwares exist so that a bridge always has a conforming device to
+Five small firmwares exist so that a bridge always has a conforming device to
 talk to, one for each chip a bridge is used against: **CWM2032**, **CWM1016**,
-**CWM0508** and **CWM30C8**. They are test targets, not products, and ship in
-nothing.
+**CWM0508**, **CWM30C8** and **CWM25C8**. They are test targets, not products,
+and ship in nothing.
 
 Each implements exactly the six opcodes §5.2 requires to be answered in
 `OPMODE_NORMAL` — `CMD_PING`, `CMD_INFO`, `CMD_GET_VERSION`, `CMD_SET_MODE`,

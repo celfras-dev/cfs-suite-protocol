@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V4.0.0</title>
+<title>Celfras Standard Protocol V4.1.0</title>
 <style>
 :root { --font-body: "Segoe UI", Arial, Helvetica, sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1914,8 +1914,9 @@ cannot say, so no optional feature is assumed.</p>
 <p>The bridge programs and erases the device behind it in that device's own
 units, and those units differ between families: the <code>CWM0508</code>, <code>CWM0524</code>,
 <code>CWM1016</code> and <code>CWM2032</code> families program 128-byte pages and erase 4 KB
-sectors; the <code>CWM30C8</code> family (model <code>0x04</code>, command set 3.1.0) programs
-256-byte pages and erases 8 KB sectors. The three opcodes of the flash block
+sectors; the <code>CWM30C8</code> family (model <code>0x04</code>, command set 3.1.0) and the
+<code>CWM25C8</code> family (model <code>0x05</code>, command set 4.1.0) program 256-byte pages
+and erase 8 KB sectors. The three opcodes of the flash block
 therefore carry no size of their own:</p>
 <ul>
 <li><code>CMD_FLASH_ERASE_SECTOR</code> (<code>0xF0</code>) takes <code>[addr u32]</code> and erases the sector
@@ -2061,7 +2062,7 @@ changelog kept for the purpose, and each names what changed on the wire.</p>
   opcodes (<code>0xF0</code>-<code>0xF2</code>) keep their numbers and are renamed to say what
   they do -- the unit is the selected target's, not the opcode's. See C.3.
   A fourth test firmware joins Appendix D.</li>
-<li><strong>4.0.0</strong> (2026-09-15) — current. A second transport for the device band:
+<li><strong>4.0.0</strong> (2026-09-15) — A second transport for the device band:
   <code>BCONF_DUT_TRANSPORT</code> selects the UART relay (default) or an RTT-style
   channel through the device's RAM over SWD, for a device that cannot run a
   UART. Its reply carries a link state and the control-block address, and a
@@ -2070,6 +2071,10 @@ changelog kept for the purpose, and each names what changed on the wire.</p>
   transport is unchanged and every existing exchange is byte-identical — and
   is released as a major by project decision for a change of this reach, not
   because an opcode moved or changed meaning.</li>
+<li><strong>4.1.0</strong> (2026-09-15) — current. <code>CMD_SET_TARGET</code> accepts a sixth model,
+  <code>CWM25C8</code> (<code>0x05</code>). Its flash units are the <code>CWM30C8</code> family's (256-byte
+  pages, 8 KB sectors) and its reply is the 3.1.0 shape; nothing else on the
+  wire changes. See C.3.</li>
 </ul>
 <p><strong>Where the record runs out.</strong> It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered

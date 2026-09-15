@@ -9,7 +9,7 @@ from tools import pdf
 CJK_PAGE = """<!doctype html><meta charset="utf-8">
 <style>@page{size:A4;margin:18mm}
 body{font-family:"Microsoft YaHei","Noto Sans SC",sans-serif}</style>
-<h1>Celfras Standard Protocol V4.0.0</h1>
+<h1>Celfras Standard Protocol V4.1.0</h1>
 <p>帧格式与校验和</p><p>프레임 포맷과 체크섬</p>"""
 
 
@@ -31,7 +31,7 @@ def test_produces_a_readable_pdf(tmp_path: Path):
     r = pypdf.PdfReader(str(out))
     assert len(r.pages) >= 1
     text = r.pages[0].extract_text()
-    assert "Celfras Standard Protocol V4.0.0" in text
+    assert "Celfras Standard Protocol V4.1.0" in text
 
 
 def test_missing_browser_raises_clear_error(monkeypatch, tmp_path: Path):

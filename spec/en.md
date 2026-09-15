@@ -1602,8 +1602,9 @@ cannot say, so no optional feature is assumed.
 The bridge programs and erases the device behind it in that device's own
 units, and those units differ between families: the `CWM0508`, `CWM0524`,
 `CWM1016` and `CWM2032` families program 128-byte pages and erase 4 KB
-sectors; the `CWM30C8` family (model `0x04`, command set 3.1.0) programs
-256-byte pages and erases 8 KB sectors. The three opcodes of the flash block
+sectors; the `CWM30C8` family (model `0x04`, command set 3.1.0) and the
+`CWM25C8` family (model `0x05`, command set 4.1.0) program 256-byte pages
+and erase 8 KB sectors. The three opcodes of the flash block
 therefore carry no size of their own:
 
 - `CMD_FLASH_ERASE_SECTOR` (`0xF0`) takes `[addr u32]` and erases the sector
@@ -1763,7 +1764,7 @@ changelog kept for the purpose, and each names what changed on the wire.
   opcodes (`0xF0`-`0xF2`) keep their numbers and are renamed to say what
   they do -- the unit is the selected target's, not the opcode's. See C.3.
   A fourth test firmware joins Appendix D.
-- **4.0.0** (2026-09-15) — current. A second transport for the device band:
+- **4.0.0** (2026-09-15) — A second transport for the device band:
   `BCONF_DUT_TRANSPORT` selects the UART relay (default) or an RTT-style
   channel through the device's RAM over SWD, for a device that cannot run a
   UART. Its reply carries a link state and the control-block address, and a
@@ -1772,6 +1773,10 @@ changelog kept for the purpose, and each names what changed on the wire.
   transport is unchanged and every existing exchange is byte-identical — and
   is released as a major by project decision for a change of this reach, not
   because an opcode moved or changed meaning.
+- **4.1.0** (2026-09-15) — current. `CMD_SET_TARGET` accepts a sixth model,
+  `CWM25C8` (`0x05`). Its flash units are the `CWM30C8` family's (256-byte
+  pages, 8 KB sectors) and its reply is the 3.1.0 shape; nothing else on the
+  wire changes. See C.3.
 
 **Where the record runs out.** It runs out below 2.0.0, and there is nothing to
 recover: the command-set version was introduced on 2026-08-21 already numbered

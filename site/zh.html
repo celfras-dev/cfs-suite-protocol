@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Celfras Standard Protocol V4.0.0</title>
+<title>Celfras Standard Protocol V4.1.0</title>
 <style>
 :root { --font-body: "Microsoft YaHei", "Noto Sans SC", sans-serif; }
 @page { size: A4; margin: 20mm 16mm 18mm; }
@@ -1661,7 +1661,8 @@ BRD01 应答 <code>0x4B</code>(nRESET、可开关供电、<code>CMD_FLASH_READ_E
 <h3 id="c3-cmd_set_target">C.3 闪存单位属于目标(<code>CMD_SET_TARGET</code>)</h3>
 <p>桥接器以目标设备自己的单位对其后的设备进行编程与擦除,而这个单位因系列而异:
 <code>CWM0508</code>、<code>CWM0524</code>、<code>CWM1016</code> 与 <code>CWM2032</code> 系列以 128 字节页编程、以 4 KB 扇区擦
-除;<code>CWM30C8</code> 系列(型号 <code>0x04</code>,命令集 3.1.0)以 256 字节页编程、以 8 KB 扇区擦除。
+除;<code>CWM30C8</code> 系列(型号 <code>0x04</code>,命令集 3.1.0)和 <code>CWM25C8</code> 系列(型号 <code>0x05</code>,命令集
+4.1.0)以 256 字节页编程、以 8 KB 扇区擦除。
 因此闪存块的三个操作码本身不带任何尺寸:</p>
 <ul>
 <li><code>CMD_FLASH_ERASE_SECTOR</code>(<code>0xF0</code>)接受 <code>[addr u32]</code>,擦除包含 <code>addr</code> 的那个扇区,
@@ -1775,12 +1776,15 @@ UART 传输层。</p>
   扇区擦除,而此前每个系列都是 128 B / 4 KB。闪存块的三个操作码(<code>0xF0</code>-<code>0xF2</code>)编号
   不变,改名为说明其所做之事的名字 —— 单位属于所选目标,而不属于操作码。见 C.3。
   附录 D 加入第四份测试固件。</li>
-<li><strong>4.0.0</strong>(2026-09-15)—— 当前版本。为设备频段提供第二种传输层:
+<li><strong>4.0.0</strong>(2026-09-15)—— 为设备频段提供第二种传输层:
   <code>BCONF_DUT_TRANSPORT</code> 在 UART 中继(默认)与经 SWD 穿过设备 RAM 的 RTT 式通道
   之间选择 —— 为无法运行 UART 的设备而设。其应答携带链路状态与控制块地址,而因链路
   尚未建立被拒绝的设备帧会连同该状态以 <code>ERR_NOT_READY</code> 应答。见 C.4。此变更是可加的
   —— UART 传输层不变,既有的每一次交换都逐字节相同 —— 并非因为某个操作码移动或改变
   含义,而是出于对这一规模变更的项目决定,作为一次大版本发布。</li>
+<li><strong>4.1.0</strong>(2026-09-15)—— 当前版本。<code>CMD_SET_TARGET</code> 接受第六个型号 <code>CWM25C8</code>
+  (<code>0x05</code>)。其闪存单位与 <code>CWM30C8</code> 系列相同(256 字节页、8 KB 扇区),应答为
+  3.1.0 的形式;线上其他内容不变。见 C.3。</li>
 </ul>
 <p><strong>记录到哪里为止。</strong> 它到 2.0.0 以下就没有了,而且无从追回:命令集版本是 2026-08-21
 引入的,一引入就编号为 2.0.0,从来没有任何实现声明过 1.x。参考固件自己那份协议文档

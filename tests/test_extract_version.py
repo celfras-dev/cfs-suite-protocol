@@ -5,7 +5,7 @@ from tools.extract import sources, version
 
 
 def test_extract_returns_current_cmd_set_version():
-    assert version.extract() == (4, 0, 0)
+    assert version.extract() == (4, 1, 0)
 
 
 def test_collect_sees_every_known_copy():
@@ -208,6 +208,13 @@ def test_no_undeclared_copy_appeared():
             "2026-09-01-bridge-suite-unification-design.md",
             "CFS-SUITE-BRIDGE/pc_app/docs/superpowers/plans/"
             "2026-09-01-option-bytes-gui.md",
+            # The CWM25C8 target spec/plan (prose quoting the 4.1.0 bump) and
+            # its host test, which asserts "C.CMD_SET_VERSION == (4, 1, 0)".
+            "CFS-SUITE-BRIDGE/docs/superpowers/plans/"
+            "2026-09-15-cwm25c8-dut-target.md",
+            "CFS-SUITE-BRIDGE/docs/superpowers/specs/"
+            "2026-09-15-cwm25c8-dut-target-design.md",
+            "CFS-SUITE-BRIDGE/pc_app/tests/test_cwm25c8.py",
         }
     )
 

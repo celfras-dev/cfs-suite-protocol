@@ -31,9 +31,10 @@ so this repo generates that part instead of writing it down twice.
 ./venv/Scripts/python.exe -m tools.build --internal  # + product values
 ```
 
-This reads three sibling repos that must be checked out next to this one
-(`../CFS-ECIG-SUITE`, `../CFS-SUITE-BRIDGE`), derives the command-set version
-they all agree on, and renders `out/{public,internal}/Celfras Standard
+This reads the sibling product trees checked out in the same cfs-suite org
+folder (`../evapor/fw/framework`, `../evapor/pc_app`, `../bridge` -- see
+`tools/extract/sources.py`, which also finds the nested repos inside the
+bridge tree), derives the command-set version they all agree on, and renders `out/{public,internal}/Celfras Standard
 Protocol V<version>*.pdf` plus `site/`.
 
 Run the tests with `./venv/Scripts/python.exe -m pytest tests/ -v`.

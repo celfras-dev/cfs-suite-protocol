@@ -105,19 +105,21 @@ _DECLARATION_PATTERN = (
 
 def _grep_declaration_sites() -> set[str]:
     found = set()
+    # A product tree can be several git repos (the bridge tree is an
+    # umbrella plus nested repos); grep each and report tree-relative paths.
     for repo in _PRODUCT_REPOS:
-        repo_dir = sources.repo_path(repo)
-        result = subprocess.run(
-            ["git", "-C", str(repo_dir), "grep", "-liP", _DECLARATION_PATTERN, "HEAD", "--"],
-            capture_output=True, text=True,
-        )
-        # git grep exits 1 with empty stdout when nothing matches; only treat
-        # a genuine error (exit >1, or exit 1 with stderr) as a failure.
-        if result.returncode not in (0, 1) or (result.returncode == 1 and result.stderr):
-            raise RuntimeError(f"git grep failed in {repo}: {result.stderr}")
-        for line in result.stdout.splitlines():
-            relpath = line.removeprefix("HEAD:")
-            found.add(f"{repo}/{relpath}")
+        for repo_dir, prefix in sources.git_trees(repo):
+            result = subprocess.run(
+                ["git", "-C", str(repo_dir), "grep", "-liP", _DECLARATION_PATTERN, "HEAD", "--"],
+                capture_output=True, text=True,
+            )
+            # git grep exits 1 with empty stdout when nothing matches; only treat
+            # a genuine error (exit >1, or exit 1 with stderr) as a failure.
+            if result.returncode not in (0, 1) or (result.returncode == 1 and result.stderr):
+                raise RuntimeError(f"git grep failed in {repo}/{prefix}: {result.stderr}")
+            for line in result.stdout.splitlines():
+                relpath = line.removeprefix("HEAD:")
+                found.add(f"{repo}/{prefix}/{relpath}" if prefix else f"{repo}/{relpath}")
     return found
 
 

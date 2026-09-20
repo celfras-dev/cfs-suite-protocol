@@ -171,3 +171,34 @@ test — this repo is a downstream artifact of the command-set version, not
 another place the number lives. `CFS-ECIG-SUITE/CLAUDE.md`'s "표준 프로토콜
 문서" section and the comment in `FW/App/Inc/app_proto.h` (outside its copy
 list, deliberately) both say the same thing from the other side.
+
+## Action item — `examples/`: port `fw_dut` as the reference implementation
+
+Registered 2026-09-20, not started. `examples/` is still the "coming soon"
+placeholder; `README.md` promises a portable DUT-side core (COBS framing,
+CRC16-CCITT-FALSE, frame dispatch, needing only a byte put/get from the
+UART) plus one buildable example, in the platform's `drv_*`/`svc_*`/`app_*`
+layout. Facts to design around, checked 2026-09-20:
+
+- **`bridge/fw_dut/<chip>/App` is the living, bench-verified code** (fw_dut
+  2.0.0, cmd_set 4.1.0; five trees whose `App/` is identical but for the
+  CHIP define and product name). `lib-mcu/template/dut-test/` claims to be
+  its source but is stale (0.1.0, half the files). Pick ONE source of
+  truth — the natural answer is the core living here and the fw_dut trees
+  and the LIB-MCU template being generated/snapshotted from it — and
+  retire the other copies in the same change.
+- **Two readers depend on the fw_dut paths**: `tools/extract/version.py`
+  `_C_HEADERS` (five `fw_dut/cwm*/App/Inc/app_proto.h` entries) and
+  `bridge/pc_app/tests/fw_tree.py` `DUT_SLUGS`. Whatever moves, both are
+  updated in the same commit, and `test_no_undeclared_copy_appeared`
+  re-baselined by hand.
+- **Public boundary.** This repo mirrors to GitHub; the public-edition leak
+  gate applies to `examples/` too. Strip product names, pin maps and
+  hwtest values; keep chip names (CWM* are public).
+- **Bench path stays in bridge.** hwtest.py, MDK/GCC builds and the LIB-MCU
+  chip-pack snapshots (`Libraries/`) are wired to `bridge/fw_dut/<chip>/`.
+  The example here is one buildable project, not five trees.
+
+Start with brainstorming → a spec in `docs/superpowers/specs/` (source of
+truth, core boundary, which chip the example targets, extractor changes,
+leak gate), then a plan. Do not copy files across before that is written.
